@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 enum TaskStatus { pending, completed }
 
@@ -6,65 +7,147 @@ class Task extends StatelessWidget {
   final String title;
   final String description;
   final DateTime completionDate;
-  final List<dynamic> assignees;
   final TaskStatus status;
-  final double elevation;
-  final double borderRadius;
-  final Color? backgroundColor;
+  final List<dynamic> assignees;
+  final VoidCallback? onStatusChanged; // Callback for status changes
+
   const Task({
-    super.key,
+    Key? key,
     required this.title,
     required this.description,
     required this.completionDate,
     required this.status,
     required this.assignees,
-    this.elevation = 2.0,
-    this.borderRadius = 10.0,
-    this.backgroundColor,
-  });
+    this.onStatusChanged,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: elevation,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(borderRadius),
-      ),
-      color: backgroundColor ?? Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+    String formattedDate = DateFormat('yyyy-MM-dd HH:mm').format(completionDate);
+    bool isToday = DateTime.now().day == completionDate.day &&
+        DateTime.now().month == completionDate.month &&
+        DateTime.now().year == completionDate.year;
+    if (isToday) {
+      formattedDate = 'Today, ${DateFormat('hh:mm a').format(completionDate)}';
+    }
+
+    return Dismissible(
+      key: Key('${title}_${formattedDate}_${status.name}'), // Unique key including status
+      direction: DismissDirection.endToStart,
+      onDismissed: (direction) {
+        if (onStatusChanged != null) {
+          onStatusChanged!(); // Notify parent to update status
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Task ${status == TaskStatus.completed ? "reopened" : "completed"}')),
+        );
+      },
+      background: _buildSwipeBackground(context), // Use different backgrounds based on status
+      child: Card(
+        elevation: 2.0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.0),
+        ),
+        color: status == TaskStatus.completed ? Colors.green[50] : Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (status == TaskStatus.completed)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Icon(Icons.check_circle, color: Colors.green, size: 16.0),
+                          ),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(height: 4.0),
-                  Text(
-                    completionDate.toString(),
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                ],
+                    SizedBox(height: 4.0),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 14.0,
+                        color: Colors.grey[600],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 4.0),
+                    Text(
+                      formattedDate,
+                      style: TextStyle(
+                        fontSize: 12.0,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    if (status == TaskStatus.completed)
+                      Row(
+                        children: List.generate(3, (index) => Icon(Icons.star, color: Colors.grey, size: 12.0))
+                            .map((icon) => Padding(
+                                  padding: const EdgeInsets.only(left: 2.0),
+                                  child: icon,
+                                ))
+                            .toList(),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            Row(children: assignees.take(2).map((assignee) {
-              return CircleAvatar(
-                radius: 16,
-                backgroundImage: NetworkImage(assignee['avatar']),
-              );
-            }).toList(),)
-          ],
+              Row(
+                children: assignees.take(2).map((assignee) {
+                  String? avatarUrl;
+                  if (assignee is Map) {
+                    avatarUrl = assignee['avatar'] as String?;
+                  } else if (assignee is String) {
+                    avatarUrl = assignee; // Fallback for plain strings
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: CircleAvatar(
+                      radius: 16.0,
+                      backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                      child: avatarUrl == null ? Icon(Icons.person, color: Colors.grey) : null,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildSwipeBackground(BuildContext context) {
+    return status == TaskStatus.pending
+        ? Container(
+            color: Colors.green, // Green for completing (pending -> completed)
+            alignment: Alignment.centerRight,
+            padding: EdgeInsets.only(right: 16.0),
+            child: Icon(Icons.check, color: Colors.white),
+          )
+        : Container(
+            color: Colors.red, // Red for re-opening (completed -> pending)
+            alignment: Alignment.centerRight,
+            padding: EdgeInsets.only(right: 16.0),
+            child: Icon(Icons.undo, color: Colors.white), // Undo icon for re-opening
+          );
   }
 }

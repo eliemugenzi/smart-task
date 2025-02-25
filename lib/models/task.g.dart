@@ -1,0 +1,37 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'task.dart';
+
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+TaskData _$TaskDataFromJson(Map<String, dynamic> json) => TaskData(
+  title: json['title'] as String,
+  completionDate: DateTime.parse(json['completionDate'] as String),
+  status: $enumDecode(_$TaskStatusEnumMap, json['status']),
+  description: json['description'] as String,
+  assignees:
+      (json['assignees'] as List<dynamic>)
+          .map((e) => e as Map<String, dynamic>)
+          .toList(),
+  subtasks:
+      (json['subtasks'] as List<dynamic>?)
+          ?.map((e) => Subtask.fromJson(e as Map<String, dynamic>))
+          .toList(),
+);
+
+Map<String, dynamic> _$TaskDataToJson(TaskData instance) => <String, dynamic>{
+  'title': instance.title,
+  'completionDate': instance.completionDate.toIso8601String(),
+  'status': _$TaskStatusEnumMap[instance.status]!,
+  'description': instance.description,
+  'assignees': instance.assignees,
+  'subtasks': instance.subtasks?.map((e) => e.toJson()).toList(),
+};
+
+const _$TaskStatusEnumMap = {
+  TaskStatus.pending: 'pending',
+  TaskStatus.inProgress: 'inProgress',
+  TaskStatus.completed: 'completed',
+};

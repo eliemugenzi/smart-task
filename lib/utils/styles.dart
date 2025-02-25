@@ -5,15 +5,23 @@ class CustomStyles {
     padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
     backgroundColor: Colors.white,
     foregroundColor: Colors.blue,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(10),
-    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
   );
 
   static final inputStyle = InputDecoration(
     hintText: 'Email',
     hintStyle: const TextStyle(color: Colors.white),
-    enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
-    focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+    enabledBorder: const UnderlineInputBorder(
+      borderSide: BorderSide(color: Colors.white),
+    ),
+    focusedBorder: const UnderlineInputBorder(
+      borderSide: BorderSide(color: Colors.white),
+    ),
+  );
+
+  static final textLabelStyle = TextStyle(
+    fontSize: 16.0,
+    fontWeight: FontWeight.bold,
+    color: Colors.grey[600],
   );
 }

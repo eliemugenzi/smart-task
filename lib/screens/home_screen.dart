@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:smarttask/components/task_component.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smarttask/models/task.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,9 +25,19 @@ class _HomeScreenState extends State<HomeScreen> {
         completionDate: DateTime.now().subtract(Duration(minutes: 30)),
         status: TaskStatus.completed,
         assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user7'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user8'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user7', 'name': 'Arrkid'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user8', 'name': 'Skengman'},
         ],
+        subtasks: [
+          Subtask(
+            title: "Trip",
+            isCompleted: true,
+          ),
+          Subtask(
+            title: "Pitch",
+            isCompleted: false,
+          ),
+        ]
       ),
       TaskData(
         title: 'Sitemap & User Flow',
@@ -33,8 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
         completionDate: DateTime.now().subtract(Duration(minutes: 10)),
         status: TaskStatus.pending,
         assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user9'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user10'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user9', 'name': 'Jenny'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user10', 'name': 'John'},
         ],
       ),
       TaskData(
@@ -43,8 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
         completionDate: DateTime.now().add(Duration(hours: 1, minutes: 10)),
         status: TaskStatus.pending,
         assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user11'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user12'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user11', 'name': 'Jane'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user12', 'name': 'Doe'},
         ],
       ),
       TaskData(
@@ -53,8 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
         completionDate: DateTime.now().add(Duration(hours: 10, minutes: 50)),
         status: TaskStatus.pending,
         assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user13'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user14'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user13', 'name': 'Elie'},
+          {'avatar': 'https://i.pravatar.cc/150?u=user14', 'name': 'Doe'},
         ],
       ),
     ];
@@ -72,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
           completionDate: task.completionDate,
           status: statusString == 'completed' ? TaskStatus.completed : TaskStatus.pending,
           assignees: task.assignees,
+          subtasks: task.subtasks,
         );
       }).toList();
     });
@@ -118,24 +131,30 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '4 tasks for you Today',
-                style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
-              ),
-              SizedBox(height: 16.0),
-              // Your Tasks Section
-              Text(
-                'Your Tasks',
-                style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16.0),
-              ..._tasks.map((task) => Task(
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '4 tasks for you Today',
+              style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16.0),
+            // Your Tasks Section (now in a scrollable ListView)
+            Text(
+              'Your Tasks',
+              style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 16.0),
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true, // Prevents infinite height issues
+                physics: AlwaysScrollableScrollPhysics(), // Ensures scrollability even with few items
+                itemCount: _tasks.length,
+                itemBuilder: (context, index) {
+                  final task = _tasks[index];
+                  return Task(
                     key: ValueKey('$task.title_${DateFormat('yyyy-MM-dd HH:mm').format(task.completionDate)}_${task.status.name}'),
                     title: task.title,
                     description: task.description,
@@ -143,9 +162,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     status: task.status,
                     assignees: task.assignees,
                     onStatusChanged: () => _toggleTaskStatus(task.title),
-                  )).toList(),
-            ],
-          ),
+                    onTap: () => {
+                      // Navigate to task details screen
+                      context.go('/task/${task.title}', extra: task.toJson()),
+                    },
+                    
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -173,20 +199,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-}
-
-class TaskData {
-  final String title;
-  final String description;
-  final DateTime completionDate;
-  final TaskStatus status;
-  final List<dynamic> assignees;
-
-  TaskData({
-    required this.title,
-    required this.description,
-    required this.completionDate,
-    required this.status,
-    required this.assignees,
-  });
 }

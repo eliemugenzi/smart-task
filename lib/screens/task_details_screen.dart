@@ -35,6 +35,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     if (taskJson == null) {
       throw Exception('Task data is required');
     }
+
     _task = TaskData.fromJson(taskJson);
   }
 
@@ -77,7 +78,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
 
     if (confirm == true) {
-      await _databaseHelper.deleteTask(_task!.title);
+      await _databaseHelper.deleteTask(_task!.id);
       _syncManager.syncTasksToServer(); // Sync deletion to server (if needed)
       context.goNamed('home'); // Navigate back to HomeScreen, triggering refresh
     }
@@ -91,7 +92,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.blue[700], // Exact blue from the image
+        backgroundColor: Colors.blue[700],
         elevation: 0,
         title: Text(
           _task!.title,
@@ -137,19 +138,18 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
       ),
       body: Container(
         decoration: BoxDecoration(
-          color: Colors.grey[50], // Light grey background for the body
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)), // Rounded top corners
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Status Row (moved from app bar to body)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Status', style: CustomStyles.textLabelStyle), // Assuming CustomStyles is defined
+                  Text('Status', style: CustomStyles.textLabelStyle), 
                   Row(
                     children: [
                       _task!.status != TaskStatus.completed
@@ -166,7 +166,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                 children: [
                   Text(
                     'Completion Date',
-                    style: CustomStyles.textLabelStyle, // Using CustomStyles for consistency
+                    style: CustomStyles.textLabelStyle,
                   ),
                   Row(
                     children: [
@@ -247,6 +247,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                             ? Subtask(title: s.title, isCompleted: value)
                             : s).toList();
                         final updatedTask = TaskData(
+                          id: _task!.id,
                           title: _task!.title,
                           completionDate: _task!.completionDate,
                           status: _task!.status,

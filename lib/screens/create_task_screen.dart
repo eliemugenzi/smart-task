@@ -86,6 +86,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   void _saveTask() async {
     if (_formKey.currentState!.validate()) {
       final task = TaskData(
+        id: widget.task?.id,
         title: _titleController.text,
         completionDate: _dueDate,
         status: _status,
@@ -102,8 +103,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         await _databaseHelper.insertTask(task);
       } else {
         // Update existing task
-        await _databaseHelper.updateTask(task);
+         await _databaseHelper.updateTask(task);
       }
+
       _syncManager.syncTasksToServer(); // Sync to server
       context.goNamed('home'); // Return to HomeScreen, which will refresh automatically
     }

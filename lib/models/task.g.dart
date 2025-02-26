@@ -7,8 +7,9 @@ part of 'task.dart';
 // **************************************************************************
 
 TaskData _$TaskDataFromJson(Map<String, dynamic> json) => TaskData(
+  id: (json['id'] as num?)?.toInt(),
   title: json['title'] as String,
-  completionDate: DateTime.parse(json['completionDate'] as String),
+completionDate: DateTime.parse(json['completionDate'] as String),
   status: $enumDecode(_$TaskStatusEnumMap, json['status']),
   description: json['description'] as String,
   assignees:
@@ -22,6 +23,7 @@ TaskData _$TaskDataFromJson(Map<String, dynamic> json) => TaskData(
 );
 
 Map<String, dynamic> _$TaskDataToJson(TaskData instance) => <String, dynamic>{
+  'id': instance.id,
   'title': instance.title,
   'completionDate': instance.completionDate.toIso8601String(),
   'status': _$TaskStatusEnumMap[instance.status]!,

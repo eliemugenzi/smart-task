@@ -48,16 +48,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _isLoading = true; // Start loading
     });
     final loadedTasks = await _databaseHelper.getTasks();
+    print('Loaded tasks: ${loadedTasks.map((task)=> task.toJson())}');
     setState(() {
       _tasks = loadedTasks;
       _isLoading = false; // Stop loading
     });
   }
 
-  Future<void> _saveTaskStatus(String title, TaskStatus status) async {
-    final taskIndex = _tasks.indexWhere((task) => task.title == title);
+  Future<void> _saveTaskStatus(int id, TaskStatus status) async {
+    final taskIndex = _tasks.indexWhere((task) => task.id == id);
     if (taskIndex != -1) {
       final updatedTask = TaskData(
+        id: _tasks[taskIndex].id, // Added to preserve ID
         title: _tasks[taskIndex].title,
         completionDate: _tasks[taskIndex].completionDate, // Updated from dueDate
         status: status,
@@ -73,11 +75,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _toggleTaskStatus(String title) {
+  void _toggleTaskStatus(int id) {
     setState(() {
-      final taskIndex = _tasks.indexWhere((task) => task.title == title);
+      final taskIndex = _tasks.indexWhere((task) => task.id == id);
       if (taskIndex != -1) {
         _tasks[taskIndex] = TaskData(
+          id: _tasks[taskIndex].id, // Added to preserve ID
           title: _tasks[taskIndex].title,
           completionDate: _tasks[taskIndex].completionDate, // Updated from dueDate
           status: _tasks[taskIndex].status == TaskStatus.pending
@@ -89,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
           assignees: _tasks[taskIndex].assignees,
           subtasks: _tasks[taskIndex].subtasks, // Handle nullable
         );
-        _saveTaskStatus(title, _tasks[taskIndex].status);
+        _saveTaskStatus(id, _tasks[taskIndex].status);
       }
     });
   }
@@ -149,7 +152,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               completionDate: task.completionDate, // Updated from dueDate
                               status: task.status,
                               assignees: task.assignees,
-                              onStatusChanged: () => _toggleTaskStatus(task.title),
+                              onStatusChanged: () {
+                                if (task.id != null) {
+                                  _toggleTaskStatus(task.id!);
+                                }
+                              },
                               onTap: () {
                                 context.go('/task/${task.title}', extra: task.toJson());
                               },

@@ -96,56 +96,52 @@ class DatabaseHelper {
     List<String>? tags, // For filtering by tags
   }) async {
     final db = await database;
-    String whereClause = '';
-    List<dynamic> whereArgs = [];
+    List<Map<String, dynamic>> maps = await db.query('tasks');
+    List<TaskData> filteredTasks = [];
 
-    if (searchQuery != null && searchQuery.isNotEmpty) {
-      whereClause += 'title LIKE ?';
-      whereArgs.add('%$searchQuery%'); // Fuzzy search using LIKE
-    }
-
-    if (completionDate != null) {
-      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
-      // Filter by date range (start of day to end of day)
-      final startOfDay = DateTime(completionDate.year, completionDate.month, completionDate.day);
-      final endOfDay = startOfDay.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
-      whereClause += 'completionDate BETWEEN ? AND ?';
-      whereArgs.add(startOfDay.toIso8601String());
-      whereArgs.add(endOfDay.toIso8601String());
-    }
-
-    if (priority != null) {
-      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
-      whereClause += 'priority = ?';
-      whereArgs.add(priority.name);
-    }
-
-    if (tags != null && tags.isNotEmpty) {
-      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
-      whereClause += 'tags LIKE ?';
-      whereArgs.add('%${jsonEncode(tags)}%'); // Fuzzy match for tags (JSON array)
-    }
-
-    print('Filter query: WHERE $whereClause, Args: $whereArgs'); // Debug log
-    final maps = await db.query(
-      'tasks',
-      where: whereClause.isNotEmpty ? whereClause : null,
-      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
-    );
-
-    return List.generate(maps.length, (i) {
-      return TaskData(
-        id: maps[i]['id'] as int?,
-        title: maps[i]['title'] as String,
-        completionDate: DateTime.parse(maps[i]['completionDate'] as String),
-        status: _parseStatus(maps[i]['status'] as String),
-        description: maps[i]['description'] as String,
-        assignees: _decodeAssignees(maps[i]['assignees'] as String),
-        subtasks: _decodeSubtasks(maps[i]['subtasks'] as String),
-        tags: _decodeTags(maps[i]['tags'] as String),
-        priority: _parsePriority(maps[i]['priority'] as String),
+    for (var map in maps) {
+      TaskData task = TaskData(
+        id: map['id'] as int?,
+        title: map['title'] as String,
+        completionDate: DateTime.parse(map['completionDate'] as String),
+        status: _parseStatus(map['status'] as String),
+        description: map['description'] as String,
+        assignees: _decodeAssignees(map['assignees'] as String),
+        subtasks: _decodeSubtasks(map['subtasks'] as String),
+        tags: _decodeTags(map['tags'] as String),
+        priority: _parsePriority(map['priority'] as String),
       );
-    });
+
+      bool matches = true;
+
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        matches = matches && task.title.toLowerCase().contains(searchQuery.toLowerCase());
+      }
+
+      if (completionDate != null) {
+        final startOfDay = DateTime(completionDate.year, completionDate.month, completionDate.day);
+        final endOfDay = startOfDay.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
+        matches = matches && (task.completionDate.isAfter(startOfDay) || task.completionDate.isAtSameMomentAs(startOfDay)) &&
+            task.completionDate.isBefore(endOfDay);
+      }
+
+      if (priority != null) {
+        matches = matches && task.priority == priority;
+      }
+
+      if (tags != null && tags.isNotEmpty) {
+        final taskTags = task.tags ?? [];
+        matches = matches && tags.every((tag) => taskTags.contains(tag));
+      }
+
+      if (matches) {
+        filteredTasks.add(task);
+      }
+    }
+
+    print('Filter query: Search=$searchQuery, Date=$completionDate, Priority=$priority, Tags=$tags');
+    print('Filtered tasks count: ${filteredTasks.length}, Tasks: ${filteredTasks.map((task) => task.toJson())}');
+    return filteredTasks;
   }
 
   Future<int> updateTask(TaskData task) async {

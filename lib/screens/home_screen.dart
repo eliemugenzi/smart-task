@@ -397,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   '${task.id}_${DateFormat('yyyy-MM-dd HH:mm').format(task.completionDate)}_${task.status.name}'), // Use id for uniqueness
                               title: task.title,
                               description: task.description,
-                              completionDate: task.completionDate, // Updated from dueDate
+                              completionDate: task.completionDate,
                               status: task.status,
                               assignees: task.assignees,
                               onStatusChanged: () {
@@ -425,4 +425,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

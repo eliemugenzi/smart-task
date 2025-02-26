@@ -4,6 +4,7 @@ import 'package:smarttask/components/task_component.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:go_router/go_router.dart';
 import 'package:smarttask/utils/database_helper.dart';
+import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/sync_manager.dart';
 import 'package:intl/intl.dart';
 
@@ -21,6 +22,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final SyncManager _syncManager = SyncManager.instance;
   late VoidCallback _navigationListener; // Store the listener function
   late GoRouterDelegate _routerDelegate; // Store the GoRouterDelegate reference
+  String _searchQuery = ''; // Search query for task names
+  DateTime? _selectedDate; // Filter by completion date
+  Priority? _selectedPriority; // Filter by priority (low, medium, high)
+  List<String> _selectedTags = []; // Filter by tags
 
   @override
   void initState() {
@@ -29,11 +34,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _navigationListener = () {
       final currentLocation = _routerDelegate.currentConfiguration.fullPath;
       if (currentLocation == '/') {
-        _loadTasks(); // Refresh tasks when returning to HomeScreen
+        _loadFilteredTasks(); // Refresh filtered tasks when returning to HomeScreen
       }
     };
     _routerDelegate.addListener(_navigationListener); // Use stored reference
-    _loadTasks();
+    _loadFilteredTasks();
   }
 
   @override
@@ -43,14 +48,18 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _loadTasks() async {
+  Future<void> _loadFilteredTasks() async {
     setState(() {
       _isLoading = true; // Start loading
     });
-    final loadedTasks = await _databaseHelper.getTasks();
-    print('Loaded tasks: ${loadedTasks.map((task)=> task.toJson())}');
+    _tasks = await _databaseHelper.getFilteredTasks(
+      searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+      completionDate: _selectedDate,
+      priority: _selectedPriority,
+      tags: _selectedTags.isNotEmpty ? _selectedTags : null,
+    );
+    print('Loaded filtered tasks: ${_tasks.map((task) => task.toJson())}');
     setState(() {
-      _tasks = loadedTasks;
       _isLoading = false; // Stop loading
     });
   }
@@ -58,14 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveTaskStatus(int id, TaskStatus status) async {
     final taskIndex = _tasks.indexWhere((task) => task.id == id);
     if (taskIndex != -1) {
-      final updatedTask = TaskData(
-        id: _tasks[taskIndex].id, // Added to preserve ID
-        title: _tasks[taskIndex].title,
-        completionDate: _tasks[taskIndex].completionDate, // Updated from dueDate
+      final updatedTask = _tasks[taskIndex].copyWith(
         status: status,
-        description: _tasks[taskIndex].description,
-        assignees: _tasks[taskIndex].assignees,
-        subtasks: _tasks[taskIndex].subtasks, // Handle nullable
       );
       await _databaseHelper.updateTask(updatedTask);
       setState(() {
@@ -79,22 +82,237 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       final taskIndex = _tasks.indexWhere((task) => task.id == id);
       if (taskIndex != -1) {
-        _tasks[taskIndex] = TaskData(
-          id: _tasks[taskIndex].id, // Added to preserve ID
-          title: _tasks[taskIndex].title,
-          completionDate: _tasks[taskIndex].completionDate, // Updated from dueDate
+        _tasks[taskIndex] = _tasks[taskIndex].copyWith(
           status: _tasks[taskIndex].status == TaskStatus.pending
               ? TaskStatus.completed
               : _tasks[taskIndex].status == TaskStatus.inProgress
                   ? TaskStatus.completed
                   : TaskStatus.pending,
-          description: _tasks[taskIndex].description,
-          assignees: _tasks[taskIndex].assignees,
-          subtasks: _tasks[taskIndex].subtasks, // Handle nullable
         );
         _saveTaskStatus(id, _tasks[taskIndex].status);
       }
     });
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+    });
+    _loadFilteredTasks();
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+      });
+      _loadFilteredTasks();
+    }
+  }
+
+  void _filterByPriority(Priority? priority) {
+    setState(() {
+      _selectedPriority = priority;
+    });
+    _loadFilteredTasks();
+  }
+
+  void _filterByTags(List<String> tags) {
+    setState(() {
+      _selectedTags = tags;
+    });
+    _loadFilteredTasks();
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _searchQuery = '';
+      _selectedDate = null;
+      _selectedPriority = null;
+      _selectedTags = [];
+    });
+    _loadFilteredTasks();
+  }
+
+  void _showFilterDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext dialogContext, StateSetter setState) {
+            return AlertDialog(
+              title: Text('Filter Tasks'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      title: Text('Completion Date'),
+                      subtitle: Text(_selectedDate == null
+                          ? 'None selected'
+                          : DateFormat('yyyy-MM-dd').format(_selectedDate!)),
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _selectedDate = picked;
+                          });
+                          _loadFilteredTasks();
+                        }
+                      },
+                    ),
+                    ListTile(
+                      title: Text('Priority'),
+                      subtitle: Text(_selectedPriority?.name.capitalize() ?? 'None selected'),
+                      onTap: () => _showPriorityFilter(dialogContext, setState),
+                    ),
+                    ListTile(
+                      title: Text('Tags'),
+                      subtitle: Text(_selectedTags.isEmpty ? 'None selected' : _selectedTags.join(', ')),
+                      onTap: () => _showTagsFilter(dialogContext, setState),
+                    ),
+                    SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _clearFilters,
+                      child: Text('Clear Filters'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    _loadFilteredTasks();
+                    Navigator.pop(context);
+                  },
+                  child: Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showPriorityFilter(BuildContext dialogContext, StateSetter setState) {
+    showDialog(
+      context: dialogContext,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Select Priority'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: Priority.values.map((priority) {
+              return RadioListTile<Priority>(
+                title: Text(priority.name.capitalize()),
+                value: priority,
+                groupValue: _selectedPriority,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedPriority = value;
+                  });
+                  _loadFilteredTasks();
+                  Navigator.pop(context);
+                },
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showTagsFilter(BuildContext dialogContext, StateSetter setState) {
+    final TextEditingController _tagController = TextEditingController();
+    List<String> availableTags = ['urgent', 'personal', 'work', 'meeting']; // Example tags; customize as needed
+    List<String> selectedTags = [..._selectedTags]; // Copy current tags
+
+    showDialog(
+      context: dialogContext,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Select Tags'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ...availableTags.map((tag) {
+                    return CheckboxListTile(
+                      title: Text(tag),
+                      value: selectedTags.contains(tag),
+                      onChanged: (bool? value) {
+                        setState(() {
+                          if (value == true) {
+                            selectedTags.add(tag);
+                          } else {
+                            selectedTags.remove(tag);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                  TextField(
+                    controller: _tagController,
+                    decoration: InputDecoration(
+                      hintText: 'Add custom tag...',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (value) {
+                      if (value.isNotEmpty && !availableTags.contains(value)) {
+                        setState(() {
+                          availableTags.add(value);
+                          selectedTags.add(value);
+                        });
+                        _tagController.clear();
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedTags = selectedTags;
+                    });
+                    _loadFilteredTasks();
+                    Navigator.pop(context);
+                  },
+                  child: Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -116,6 +334,28 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(kToolbarHeight),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Search tasks by name...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                suffixIcon: Icon(Icons.search),
+                prefixIcon: _searchQuery.isNotEmpty || _selectedDate != null || _selectedPriority != null || _selectedTags.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey),
+                        onPressed: _clearFilters, // Clear filters with a single tap
+                      )
+                    : null,
+              ),
+              onChanged: _onSearchChanged,
+            ),
+          ),
+        ),
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator()) // Show loading indicator while fetching
@@ -126,12 +366,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${_tasks.length} tasks for you Today',
-                        style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${_tasks.length} tasks for you Today',
+                            style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.filter_list),
+                            onPressed: () => _showFilterDialog(context),
+                          ),
+                        ],
                       ),
                       SizedBox(height: 16.0),
-                      // Your Tasks Section (now in a scrollable ListView)
                       Text(
                         'Your Tasks',
                         style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
@@ -146,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             final task = _tasks[index];
                             return Task(
                               key: ValueKey(
-                                  '$task.title_${DateFormat('yyyy-MM-dd HH:mm').format(task.completionDate)}_${task.status.name}'), // Updated from dueDate
+                                  '${task.id}_${DateFormat('yyyy-MM-dd HH:mm').format(task.completionDate)}_${task.status.name}'), // Use id for uniqueness
                               title: task.title,
                               description: task.description,
                               completionDate: task.completionDate, // Updated from dueDate
@@ -174,22 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.blue,
         child: Icon(Icons.add, color: Colors.white),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home, color: Colors.grey),
-            label: '',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.favorite, color: Colors.grey),
-            label: '',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline, color: Colors.grey),
-            label: '',
-          ),
-        ],
-      ),
     );
   }
 }
+

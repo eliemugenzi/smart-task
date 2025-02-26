@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:smarttask/utils/database_helper.dart';
+import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/sync_manager.dart';
+import 'package:smarttask/utils/styles.dart'; // Assuming CustomStyles is defined here
 
 class CreateTaskScreen extends StatefulWidget {
   final TaskData? task; // Optional task for editing
@@ -19,14 +21,17 @@ class CreateTaskScreen extends StatefulWidget {
 class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
+  final _tagController = TextEditingController(); // New controller for tags
   final _descriptionController = TextEditingController();
-  DateTime _dueDate = DateTime.now();
+  DateTime _dueDate = DateTime.now(); // Updated from completionDate for consistency with your file
   TaskStatus _status = TaskStatus.pending;
+  Priority _priority = Priority.medium; // Default to medium
   List<Map<String, dynamic>> _assignees = [
     {'name': 'Leroy Jenkins', 'avatar': 'https://i.pravatar.cc/150?u=leroy'},
     {'name': 'Janna Dark', 'avatar': 'https://i.pravatar.cc/150?u=janna'},
   ];
   List<Subtask> _subtasks = [Subtask(title: '')];
+  List<String> _tags = []; // New field for tags
   final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
   final SyncManager _syncManager = SyncManager.instance;
 
@@ -36,10 +41,12 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     if (widget.task != null) {
       _titleController.text = widget.task!.title;
       _descriptionController.text = widget.task!.description;
-      _dueDate = widget.task!.completionDate;
+      _dueDate = widget.task!.completionDate; // Updated from completionDate for consistency
       _status = widget.task!.status;
+      _priority = widget.task!.priority; // Initialize priority
       _assignees = widget.task!.assignees;
-      _subtasks = widget.task!.subtasks!;
+      _subtasks = widget.task!.subtasks ?? [Subtask(title: '')]; // Handle nullable subtasks
+      _tags = widget.task!.tags ?? []; // Initialize tags
     }
   }
 
@@ -83,29 +90,47 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     });
   }
 
+  void _addTag(String tag) {
+    setState(() {
+      if (!_tags.contains(tag) && tag.isNotEmpty) {
+        _tags.add(tag);
+      }
+    });
+  }
+
+  void _removeTag(String tag) {
+    setState(() {
+      _tags.remove(tag);
+    });
+  }
+
   void _saveTask() async {
     if (_formKey.currentState!.validate()) {
       final task = TaskData(
-        id: widget.task?.id,
+        id: widget.task?.id, // Preserve the original id for updates
         title: _titleController.text,
-        completionDate: _dueDate,
+        completionDate: _dueDate, // Updated from dueDate for consistency
         status: _status,
         description: _descriptionController.text,
         assignees: _assignees,
         subtasks: _subtasks.where((subtask) => subtask.title.isNotEmpty).map((subtask) => Subtask(
           title: subtask.title,
           isCompleted: subtask.isCompleted, // Preserve completion status for updates
-        )).toList(),
-      );
+        )).toList().isEmpty ? null : _subtasks.where((subtask) => subtask.title.isNotEmpty).map((subtask) => Subtask(
+          title: subtask.title,
+          isCompleted: subtask.isCompleted, // Preserve completion status for updates
+        )).toList(), // Handle nullable subtasks
+        tags: _tags.isEmpty ? null : _tags, // Handle nullable tags
+        priority: _priority, // Include priority
+      ).copyWith(); // Use copyWith to create the final instance (optional, for consistency)
 
       if (widget.task == null) {
         // Create new task
         await _databaseHelper.insertTask(task);
       } else {
         // Update existing task
-         await _databaseHelper.updateTask(task);
+        await _databaseHelper.updateTask(task); // Uses task.id
       }
-
       _syncManager.syncTasksToServer(); // Sync to server
       context.goNamed('home'); // Return to HomeScreen, which will refresh automatically
     }
@@ -115,6 +140,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _tagController.dispose();
     super.dispose();
   }
 
@@ -140,6 +166,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('Title', style: CustomStyles.textLabelStyle),
               TextFormField(
                 controller: _titleController,
                 decoration: InputDecoration(
@@ -160,6 +187,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 },
               ),
               SizedBox(height: 16.0),
+              Text('Description', style: CustomStyles.textLabelStyle),
               TextFormField(
                 controller: _descriptionController,
                 decoration: InputDecoration(
@@ -182,12 +210,13 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               ),
               SizedBox(height: 16.0),
               ListTile(
-                title: Text('Due Date'),
+                title: Text('Due Date', style: CustomStyles.textLabelStyle),
                 subtitle: Text(_formatDueDate(_dueDate)),
                 trailing: Icon(Icons.calendar_today, color: Colors.grey),
                 onTap: () => _selectDueDate(context),
               ),
               SizedBox(height: 16.0),
+              Text('Status', style: CustomStyles.textLabelStyle),
               DropdownButtonFormField<TaskStatus>(
                 value: _status,
                 decoration: InputDecoration(
@@ -213,9 +242,75 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 },
               ),
               SizedBox(height: 16.0),
+              Text('Priority', style: CustomStyles.textLabelStyle),
+              DropdownButtonFormField<Priority>(
+                value: _priority,
+                decoration: InputDecoration(
+                  labelText: 'Priority',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide(color: Colors.blue),
+                  ),
+                ),
+                items: Priority.values.map((priority) {
+                  return DropdownMenuItem<Priority>(
+                    value: priority,
+                    child: Text(priority.name.capitalize()),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _priority = value ?? Priority.medium;
+                  });
+                },
+              ),
+              SizedBox(height: 16.0),
+              Text(
+                'Tags',
+                style: CustomStyles.textLabelStyle,
+              ),
+              SizedBox(height: 8.0),
+              Wrap(
+                spacing: 8.0,
+                children: _tags.map((tag) {
+                  return Chip(
+                    label: Text(tag),
+                    deleteIcon: Icon(Icons.close, size: 16.0),
+                    onDeleted: () => _removeTag(tag),
+                  );
+                }).toList(),
+              ),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Add tag...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide(color: Colors.blue),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(Icons.add, color: Colors.blue),
+                    onPressed: () {
+                      _addTag(_tagController.text);
+                      _tagController.clear();
+                    },
+                  ),
+                ),
+                controller: _tagController, // Reusing title controller for simplicity; consider a new one for tags
+                onSubmitted: (value) {
+                  _addTag(value);
+                  _tagController.clear();
+                },
+              ),
+              SizedBox(height: 16.0),
               Text(
                 'Assignees',
-                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold, color: Colors.grey[600]),
+                style: CustomStyles.textLabelStyle,
               ),
               SizedBox(height: 8.0),
               ..._assignees.map((assignee) {
@@ -258,7 +353,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               SizedBox(height: 16.0),
               Text(
                 'Subtasks',
-                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold, color: Colors.grey[600]),
+                style: CustomStyles.textLabelStyle,
               ),
               SizedBox(height: 8.0),
               ..._subtasks.asMap().entries.map((entry) {
@@ -283,7 +378,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           ),
                           onChanged: (value) {
                             setState(() {
-                              _subtasks[index] = Subtask(title: value, isCompleted: subtask.isCompleted);
+                              _subtasks[index] = subtask.copyWith(title: value); // Use copyWith for Subtask
                             });
                           },
                         ),
@@ -333,11 +428,3 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     return DateFormat('yyyy-MM-dd hh:mm a').format(date);
   }
 }
-
-extension on String {
-  String capitalize() {
-    if (this.isEmpty) return this;
-    return this[0].toUpperCase() + this.substring(1).toLowerCase();
-  }
-}
-

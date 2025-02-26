@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:smarttask/utils/database_helper.dart';
-import 'package:smarttask/utils/styles.dart';
+import 'package:smarttask/utils/helpers.dart';
+import 'package:smarttask/utils/styles.dart'; // Assuming CustomStyles is defined here
 import 'package:smarttask/utils/sync_manager.dart';
-
 
 class TaskDetailsScreen extends StatefulWidget {
   const TaskDetailsScreen({super.key});
@@ -40,7 +40,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   }
 
   Future<void> _updateTask() async {
-    if (_task == null) return; // Guard against null task
+    if (_task == null || _task!.id == null) return; // Guard against null task or id
     // Navigate to CreateTaskScreen using go_router, passing the task as extra data
     final updatedTaskJson = await context.push<Map<String, dynamic>>(
       '/create-task',
@@ -58,7 +58,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   }
 
   Future<void> _deleteTask() async {
-    if (_task == null) return; // Guard against null task
+    if (_task == null || _task!.id == null) return; // Guard against null task or id
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -78,7 +78,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
 
     if (confirm == true) {
-      await _databaseHelper.deleteTask(_task!.id);
+      await _databaseHelper.deleteTask(_task!.id); // Use id instead of title
       _syncManager.syncTasksToServer(); // Sync deletion to server (if needed)
       context.goNamed('home'); // Navigate back to HomeScreen, triggering refresh
     }
@@ -107,7 +107,6 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
           onPressed: () => context.goNamed('home'), // Back button to navigate to HomeScreen
         ),
         actions: [
-          // Removed status row from here; moved to body
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'update') {
@@ -149,7 +148,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Status', style: CustomStyles.textLabelStyle), 
+                  Text('Status', style: CustomStyles.textLabelStyle),
                   Row(
                     children: [
                       _task!.status != TaskStatus.completed
@@ -184,6 +183,24 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                 ],
               ),
               SizedBox(height: 16.0),
+              // Priority
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Priority',
+                    style: CustomStyles.textLabelStyle,
+                  ),
+                  Text(
+                    _task!.priority.name.capitalize(),
+                    style: TextStyle(
+                      fontSize: 14.0,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16.0),
               // Description
               Text(
                 'Description',
@@ -199,6 +216,24 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                 ),
               ),
               SizedBox(height: 16.0),
+              // Tags
+              if (_task!.tags != null && _task!.tags!.isNotEmpty) ...[
+                Text(
+                  'Tags',
+                  style: CustomStyles.textLabelStyle, // Using CustomStyles for consistency
+                ),
+                SizedBox(height: 8.0),
+                Wrap(
+                  spacing: 8.0,
+                  children: _task!.tags!.map((tag) {
+                    return Chip(
+                      label: Text(tag),
+                      backgroundColor: Colors.blue[100],
+                    );
+                  }).toList(),
+                ),
+                SizedBox(height: 16.0),
+              ],
               // Assigned
               Text(
                 'Assigned',
@@ -244,15 +279,9 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                     onChanged: (bool? value) async {
                       if (value != null && _task != null) {
                         final updatedSubtasks = _task!.subtasks!.map((s) => s.title == subtask.title
-                            ? Subtask(title: s.title, isCompleted: value)
+                            ? s.copyWith(isCompleted: value) // Use copyWith for Subtask
                             : s).toList();
-                        final updatedTask = TaskData(
-                          id: _task!.id,
-                          title: _task!.title,
-                          completionDate: _task!.completionDate,
-                          status: _task!.status,
-                          description: _task!.description,
-                          assignees: _task!.assignees,
+                        final updatedTask = _task!.copyWith( // Use copyWith for TaskData
                           subtasks: updatedSubtasks,
                         );
                         await _databaseHelper.updateTask(updatedTask);

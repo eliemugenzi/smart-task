@@ -1,9 +1,11 @@
+// screens/home_screen.dart
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:smarttask/components/task_component.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smarttask/models/task.dart';
+import 'package:go_router/go_router.dart';
+import 'package:smarttask/utils/database_helper.dart';
+import 'package:smarttask/utils/sync_manager.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,85 +16,61 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late List<TaskData> _tasks;
+  bool _isLoading = true; // Track loading state
+  final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
+  final SyncManager _syncManager = SyncManager.instance;
+  late VoidCallback _navigationListener; // Store the listener function
+  late GoRouterDelegate _routerDelegate; // Store the GoRouterDelegate reference
 
   @override
   void initState() {
     super.initState();
-    _tasks = [
-      TaskData(
-        title: 'Research competitors',
-        description: 'Analyze competitor products and strategies',
-        completionDate: DateTime.now().subtract(Duration(minutes: 30)),
-        status: TaskStatus.completed,
-        assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user7', 'name': 'Arrkid'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user8', 'name': 'Skengman'},
-        ],
-        subtasks: [
-          Subtask(
-            title: "Trip",
-            isCompleted: true,
-          ),
-          Subtask(
-            title: "Pitch",
-            isCompleted: false,
-          ),
-        ]
-      ),
-      TaskData(
-        title: 'Sitemap & User Flow',
-        description: 'Design the site structure and user navigation',
-        completionDate: DateTime.now().subtract(Duration(minutes: 10)),
-        status: TaskStatus.pending,
-        assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user9', 'name': 'Jenny'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user10', 'name': 'John'},
-        ],
-      ),
-      TaskData(
-        title: 'Wireframing',
-        description: 'Create wireframes for key screens',
-        completionDate: DateTime.now().add(Duration(hours: 1, minutes: 10)),
-        status: TaskStatus.pending,
-        assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user11', 'name': 'Jane'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user12', 'name': 'Doe'},
-        ],
-      ),
-      TaskData(
-        title: 'Moodboard',
-        description: 'Compile inspiration images for design',
-        completionDate: DateTime.now().add(Duration(hours: 10, minutes: 50)),
-        status: TaskStatus.pending,
-        assignees: [
-          {'avatar': 'https://i.pravatar.cc/150?u=user13', 'name': 'Elie'},
-          {'avatar': 'https://i.pravatar.cc/150?u=user14', 'name': 'Doe'},
-        ],
-      ),
-    ];
+    _routerDelegate = GoRouter.of(context).routerDelegate; // Store GoRouterDelegate
+    _navigationListener = () {
+      final currentLocation = _routerDelegate.currentConfiguration.fullPath;
+      if (currentLocation == '/') {
+        _loadTasks(); // Refresh tasks when returning to HomeScreen
+      }
+    };
+    _routerDelegate.addListener(_navigationListener); // Use stored reference
     _loadTasks();
   }
 
+  @override
+  void dispose() {
+    _syncManager.dispose(); // Clean up SyncManager
+    _routerDelegate.removeListener(_navigationListener); // Use stored reference
+    super.dispose();
+  }
+
   Future<void> _loadTasks() async {
-    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _tasks = _tasks.map((task) {
-        final statusString = prefs.getString('task_${task.title}_status') ?? task.status.name;
-        return TaskData(
-          title: task.title,
-          description: task.description,
-          completionDate: task.completionDate,
-          status: statusString == 'completed' ? TaskStatus.completed : TaskStatus.pending,
-          assignees: task.assignees,
-          subtasks: task.subtasks,
-        );
-      }).toList();
+      _isLoading = true; // Start loading
+    });
+    final loadedTasks = await _databaseHelper.getTasks();
+    setState(() {
+      _tasks = loadedTasks;
+      _isLoading = false; // Stop loading
     });
   }
 
   Future<void> _saveTaskStatus(String title, TaskStatus status) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('task_${title}_status', status.name);
+    final taskIndex = _tasks.indexWhere((task) => task.title == title);
+    if (taskIndex != -1) {
+      final updatedTask = TaskData(
+        title: _tasks[taskIndex].title,
+        completionDate: _tasks[taskIndex].completionDate, // Updated from dueDate
+        status: status,
+        description: _tasks[taskIndex].description,
+        assignees: _tasks[taskIndex].assignees,
+        subtasks: _tasks[taskIndex].subtasks, // Handle nullable
+      );
+      await _databaseHelper.updateTask(updatedTask);
+      setState(() {
+        _tasks[taskIndex] = updatedTask;
+      });
+      _syncManager.syncTasksToServer(); // Updated to public method
+    }
   }
 
   void _toggleTaskStatus(String title) {
@@ -101,10 +79,15 @@ class _HomeScreenState extends State<HomeScreen> {
       if (taskIndex != -1) {
         _tasks[taskIndex] = TaskData(
           title: _tasks[taskIndex].title,
+          completionDate: _tasks[taskIndex].completionDate, // Updated from dueDate
+          status: _tasks[taskIndex].status == TaskStatus.pending
+              ? TaskStatus.completed
+              : _tasks[taskIndex].status == TaskStatus.inProgress
+                  ? TaskStatus.completed
+                  : TaskStatus.pending,
           description: _tasks[taskIndex].description,
-          completionDate: _tasks[taskIndex].completionDate,
-          status: _tasks[taskIndex].status == TaskStatus.pending ? TaskStatus.completed : TaskStatus.pending,
           assignees: _tasks[taskIndex].assignees,
+          subtasks: _tasks[taskIndex].subtasks, // Handle nullable
         );
         _saveTaskStatus(title, _tasks[taskIndex].status);
       }
@@ -131,52 +114,55 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '4 tasks for you Today',
-              style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
-            ),
-            SizedBox(height: 16.0),
-            // Your Tasks Section (now in a scrollable ListView)
-            Text(
-              'Your Tasks',
-              style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 16.0),
-            Expanded(
-              child: ListView.builder(
-                shrinkWrap: true, // Prevents infinite height issues
-                physics: AlwaysScrollableScrollPhysics(), // Ensures scrollability even with few items
-                itemCount: _tasks.length,
-                itemBuilder: (context, index) {
-                  final task = _tasks[index];
-                  return Task(
-                    key: ValueKey('$task.title_${DateFormat('yyyy-MM-dd HH:mm').format(task.completionDate)}_${task.status.name}'),
-                    title: task.title,
-                    description: task.description,
-                    completionDate: task.completionDate,
-                    status: task.status,
-                    assignees: task.assignees,
-                    onStatusChanged: () => _toggleTaskStatus(task.title),
-                    onTap: () => {
-                      // Navigate to task details screen
-                      context.go('/task/${task.title}', extra: task.toJson()),
-                    },
-                    
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator()) // Show loading indicator while fetching
+          : _tasks.isEmpty
+              ? Center(child: Text('No tasks available'))
+              : Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_tasks.length} tasks for you Today',
+                        style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
+                      ),
+                      SizedBox(height: 16.0),
+                      // Your Tasks Section (now in a scrollable ListView)
+                      Text(
+                        'Your Tasks',
+                        style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 16.0),
+                      Expanded(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          physics: AlwaysScrollableScrollPhysics(),
+                          itemCount: _tasks.length,
+                          itemBuilder: (context, index) {
+                            final task = _tasks[index];
+                            return Task(
+                              key: ValueKey(
+                                  '$task.title_${DateFormat('yyyy-MM-dd HH:mm').format(task.completionDate)}_${task.status.name}'), // Updated from dueDate
+                              title: task.title,
+                              description: task.description,
+                              completionDate: task.completionDate, // Updated from dueDate
+                              status: task.status,
+                              assignees: task.assignees,
+                              onStatusChanged: () => _toggleTaskStatus(task.title),
+                              onTap: () {
+                                context.go('/task/${task.title}', extra: task.toJson());
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Add task logic here
+          context.go('/create-task'); // Navigate to CreateTaskScreen
         },
         backgroundColor: Colors.blue,
         child: Icon(Icons.add, color: Colors.white),

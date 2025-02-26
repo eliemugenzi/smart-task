@@ -7,4 +7,5 @@ class Routes {
   static const String profile = '/profile';
   static const String settings = '/settings';
   static const String taskDetails = '/task/:taskId';
+  static const String createTask = '/create-task';
 }

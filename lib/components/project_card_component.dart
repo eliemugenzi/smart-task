@@ -9,14 +9,14 @@ class ProjectCard extends StatelessWidget {
   final Color backgroundColor;
 
   const ProjectCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.taskCount,
     required this.progress,
     required this.assignees,
     required this.icon,
     this.backgroundColor = Colors.blue,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

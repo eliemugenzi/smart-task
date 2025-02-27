@@ -1,0 +1,54 @@
+# .github/workflows/smarttask_release.yml
+name: SmartTask Release
+
+# Controls when the workflow will run
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+# A workflow run is made up of one or more jobs
+jobs:
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed
+    steps:
+      # Step 1: Check out the code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Cache Flutter dependencies
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.flutter
+          key: ${{ runner.os }}-flutter-${{ hashFiles('pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
+
+      # Step 3: Set up Flutter (updated to use Flutter 3.19.6 for Dart >=3.7.0)
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6' # Match your local Flutter version, adjust as needed
+          channel: 'stable' # Use 'beta' or 'master' if needed
+
+      # Step 4: Install dependencies
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Step 5: Build Android APK (for CI/CD)
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      # Step 6: Upload APK as artifact (for manual testing)
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smarttask-apk
+          path: build/app/outputs/flutter-apk/app-release.apk

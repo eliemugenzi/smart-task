@@ -1,4 +1,5 @@
 // utils/database_helper.dart
+import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:smarttask/models/task.dart';
@@ -16,9 +17,15 @@ class DatabaseHelper {
     return _database!;
   }
 
+  // Add a public method for testing to set the database instance
+  @visibleForTesting
+  static void setDatabaseForTesting(Database? db) {
+    _database = db; // Allow direct setting for tests
+  }
+
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    final path = join(dbPath, 'test_tasks.db');
 
     return await openDatabase(path, version: 4, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
@@ -67,7 +74,7 @@ class DatabaseHelper {
 
   Future<int> insertTask(TaskData task) async {
     final db = await database;
-    return await db.insert('tasks', {
+    final id = await db.insert('tasks', {
       'title': task.title,
       'completionDate': task.completionDate.toIso8601String(),
       'status': task.status.name,
@@ -76,13 +83,35 @@ class DatabaseHelper {
       'tags': jsonEncode(task.tags ?? []),
       'priority': task.priority.name,
     });
+  
+    return id;
+  }
+
+  Future<int> updateTask(TaskData task) async {
+    final db = await database;
+    final rowsAffected = await db.update(
+      'tasks',
+      {
+        'title': task.title,
+        'completionDate': task.completionDate.toIso8601String(),
+        'status': task.status.name,
+        'description': task.description,
+        'assignees': jsonEncode(task.assignees),
+        'tags': jsonEncode(task.tags ?? []),
+        'priority': task.priority.name,
+      },
+      where: 'id = ?',
+      whereArgs: [task.id],
+    );
+   
+    return rowsAffected;
   }
 
   Future<List<TaskData>> getTasks() async {
     final db = await database;
     final maps = await db.query('tasks');
-    return List.generate(maps.length, (i) {
-      return TaskData(
+    final tasks = List.generate(maps.length, (i) {
+      final task = TaskData(
         id: maps[i]['id'] as int?,
         title: maps[i]['title'] as String,
         completionDate: DateTime.parse(maps[i]['completionDate'] as String),
@@ -92,7 +121,9 @@ class DatabaseHelper {
         tags: _decodeTags(maps[i]['tags'] as String),
         priority: _parsePriority(maps[i]['priority'] as String),
       );
+      return task;
     });
+    return tasks;
   }
 
   Future<List<TaskData>> getFilteredTasks({
@@ -139,7 +170,7 @@ class DatabaseHelper {
     );
 
     return List.generate(maps.length, (i) {
-      return TaskData(
+      final task = TaskData(
         id: maps[i]['id'] as int?,
         title: maps[i]['title'] as String,
         completionDate: DateTime.parse(maps[i]['completionDate'] as String),
@@ -149,25 +180,8 @@ class DatabaseHelper {
         tags: _decodeTags(maps[i]['tags'] as String),
         priority: _parsePriority(maps[i]['priority'] as String),
       );
+      return task;
     });
-  }
-
-  Future<int> updateTask(TaskData task) async {
-    final db = await database;
-    return await db.update(
-      'tasks',
-      {
-        'title': task.title,
-        'completionDate': task.completionDate.toIso8601String(),
-        'status': task.status.name,
-        'description': task.description,
-        'assignees': jsonEncode(task.assignees),
-        'tags': jsonEncode(task.tags ?? []),
-        'priority': task.priority.name,
-      },
-      where: 'id = ?', // Use id instead of title
-      whereArgs: [task.id], // Use task.id for unique identification
-    );
   }
 
   Future<int> deleteTask(int? id) async {

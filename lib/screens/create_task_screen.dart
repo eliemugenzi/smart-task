@@ -3,6 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:smarttask/components/app_bar_compoment.dart';
+import 'package:smarttask/components/assignee_initials_component.dart';
+import 'package:smarttask/components/button_component.dart';
+import 'package:smarttask/components/text_field_component.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
@@ -151,14 +155,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                             title: Row(
                               mainAxisSize: MainAxisSize.min, // Limit row width
                               children: [
-                                CircleAvatar(
-                                  radius: 16.0,
-                                  backgroundColor: Colors.blue,
-                                  child: Text(
-                                    fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
+                                AssigneeInitials(fullName: fullName, currentUserName: _currentUserName),
                                 SizedBox(width: 8.0),
                                 Expanded( // Allow text to wrap or truncate
                                   child: Text(
@@ -250,17 +247,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue[700],
-        elevation: 0,
-        title: Text(
-          widget.task == null ? 'Create Task' : 'Update Task',
-          style: TextStyle(color: Colors.white, fontSize: 20.0, fontWeight: FontWeight.bold),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => context.goNamed('home'), // Use named route for back navigation
-        ),
+      appBar: CustomAppBar(
+        title: widget.task == null ? 'Create Task' : 'Update Task',
+        onBack: () => context.goNamed('home'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -270,18 +259,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Title', style: CustomStyles.textLabelStyle),
-              TextFormField(
+              CustomTextField(
+                labelText: 'Title',
                 controller: _titleController,
-                decoration: InputDecoration(
-                  labelText: 'Title',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a title';
@@ -291,18 +271,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               ),
               SizedBox(height: 16.0),
               Text('Description', style: CustomStyles.textLabelStyle),
-              TextFormField(
+              CustomTextField(
+                labelText: 'Description',
                 controller: _descriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                ),
                 maxLines: 3,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -386,27 +357,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   );
                 }).toList(),
               ),
-              TextField(
-                decoration: InputDecoration(
-                  hintText: 'Add tag...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(Icons.add, color: Colors.blue),
-                    onPressed: () {
-                      _addTag(_tagController.text);
-                      _tagController.clear();
-                    },
-                  ),
-                ),
-                controller: _tagController, // Reusing title controller for simplicity; consider a new one for tags
+              CustomTextField(
+                labelText: 'Add tag...',
+                controller: _tagController,
                 onSubmitted: (value) {
-                  _addTag(value);
+                  _addTag(value!);
                   _tagController.clear();
                 },
               ),
@@ -421,14 +376,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 final displayName = _currentUserName == fullName ? '$fullName (You)' : fullName;
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    radius: 16.0,
-                    backgroundColor: Colors.blue,
-                    child: Text(
-                      fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
+                  leading: AssigneeInitials(fullName: fullName, currentUserName: _currentUserName),
                   title: Text(
                     displayName,
                     style: TextStyle(fontSize: 14.0, color: Colors.black87),
@@ -444,13 +392,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 );
               }).toList(),
               SizedBox(height: 8.0),
-              ElevatedButton(
+              CustomButton(
+                text: 'Add Assignee',
                 onPressed: _showAssigneeSelector,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-                ),
-                child: Text('Add Assignee', style: TextStyle(color: Colors.white)),
               ),
               if (_errorMessage != null)
                 Padding(
@@ -461,15 +405,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   ),
                 ),
               SizedBox(height: 16.0),
-              ElevatedButton(
+              CustomButton(
+                text: widget.task == null ? 'Create Task' : 'Update Task',
                 onPressed: _saveTask,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-                  padding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 24.0),
-                ),
-                child: Text(widget.task == null ? 'Create Task' : 'Update Task',
-                    style: TextStyle(color: Colors.white, fontSize: 16.0)),
               ),
             ],
           ),

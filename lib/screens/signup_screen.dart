@@ -1,8 +1,12 @@
 // screens/signup_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:smarttask/components/app_bar_compoment.dart';
+import 'package:smarttask/components/button_component.dart';
+import 'package:smarttask/components/text_field_component.dart';
 import 'package:smarttask/utils/styles.dart'; // Assuming CustomStyles is defined here
 import 'package:smarttask/services/auth_service.dart';
+
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -60,17 +64,9 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue[700],
-        elevation: 0,
-        title: Text(
-          'Sign Up',
-          style: TextStyle(color: Colors.white, fontSize: 20.0, fontWeight: FontWeight.bold),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => context.goNamed('home'), // Adjust to previous screen if needed
-        ),
+      appBar: CustomAppBar(
+        title: 'Sign Up',
+        onBack: () => context.goNamed('home'), // Adjust to previous screen if needed
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -89,18 +85,9 @@ class _SignupScreenState extends State<SignupScreen> {
                     style: TextStyle(color: Colors.red, fontSize: 14.0),
                   ),
                 ),
-              TextFormField(
+              CustomTextField(
+                labelText: 'First Name',
                 controller: _firstNameController,
-                decoration: InputDecoration(
-                  labelText: 'First Name',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your first name';
@@ -109,18 +96,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 },
               ),
               SizedBox(height: 16.0),
-              TextFormField(
+              CustomTextField(
+                labelText: 'Last Name',
                 controller: _lastNameController,
-                decoration: InputDecoration(
-                  labelText: 'Last Name',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your last name';
@@ -129,18 +107,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 },
               ),
               SizedBox(height: 16.0),
-              TextFormField(
+              CustomTextField(
+                labelText: 'Email',
                 controller: _emailController,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                ),
                 keyboardType: TextInputType.emailAddress,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -153,18 +122,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 },
               ),
               SizedBox(height: 16.0),
-              TextFormField(
+              CustomTextField(
+                labelText: 'Password',
                 controller: _passwordController,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide(color: Colors.blue),
-                  ),
-                ),
                 obscureText: true,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -177,34 +137,10 @@ class _SignupScreenState extends State<SignupScreen> {
                 },
               ),
               SizedBox(height: 24.0),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _signup,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-                  padding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 24.0),
-                  disabledBackgroundColor: Colors.blue[200],
-                ),
-                child: _isLoading
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.0),
-                          ),
-                          SizedBox(width: 8.0),
-                          Text(
-                            'Sign Up',
-                            style: TextStyle(color: Colors.white, fontSize: 16.0),
-                          ),
-                        ],
-                      )
-                    : Text(
-                        'Sign Up',
-                        style: TextStyle(color: Colors.white, fontSize: 16.0),
-                      ),
+              CustomButton(
+                text: 'Sign Up',
+                onPressed: _signup,
+                isLoading: _isLoading,
               ),
               SizedBox(height: 16.0),
               Center(

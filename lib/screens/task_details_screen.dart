@@ -2,7 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
+import 'package:smarttask/components/app_bar_compoment.dart';
+import 'package:smarttask/components/assignee_initials_component.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
@@ -11,6 +12,7 @@ import 'package:smarttask/utils/sync_manager.dart';
 import 'package:smarttask/services/user_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+
 
 class TaskDetailsScreen extends StatefulWidget {
   const TaskDetailsScreen({super.key});
@@ -129,21 +131,9 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue[700],
-        elevation: 0,
-        title: Text(
-          _task!.title,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20.0,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => context.goNamed('home'), // Back button to navigate to HomeScreen
-        ),
+      appBar: CustomAppBar(
+        title: _task!.title,
+        onBack: () => context.goNamed('home'),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -210,7 +200,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                       Icon(Icons.calendar_today, color: Colors.grey, size: 16.0),
                       SizedBox(width: 8.0),
                       Text(
-                        _formatCompletionDate(_task!.completionDate),
+                        formatDueDate(_task!.completionDate),
                         style: TextStyle(
                           fontSize: 14.0,
                           color: Colors.black87,
@@ -283,14 +273,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                 final displayName = _currentUserName == fullName ? '$fullName (You)' : fullName;
                 return ListTile(
                   contentPadding: EdgeInsets.zero, // Remove default padding for exact match
-                  leading: CircleAvatar(
-                    radius: 16.0,
-                    backgroundColor: Colors.blue,
-                    child: Text(
-                      fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
+                  leading: AssigneeInitials(fullName: fullName, currentUserName: _currentUserName),
                   title: Text(
                     displayName,
                     style: TextStyle(
@@ -316,13 +299,5 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
   }
 
-  String _formatCompletionDate(DateTime date) {
-    bool isToday = DateTime.now().day == date.day &&
-        DateTime.now().month == date.month &&
-        DateTime.now().year == date.year;
-    if (isToday) {
-      return 'Today, ${DateFormat('hh:mm a').format(date)}';
-    }
-    return DateFormat('yyyy-MM-dd hh:mm a').format(date);
-  }
+  
 }

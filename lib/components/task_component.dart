@@ -1,14 +1,16 @@
+// components/task_component.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:smarttask/models/task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
-
-class Task extends StatelessWidget {
+class Task extends StatefulWidget {
   final String title;
   final String description;
   final DateTime completionDate;
   final TaskStatus status;
-  final List<dynamic> assignees;
+  final List<Map<String, dynamic>> assignees; // Updated from List<dynamic> to match TaskData
   final VoidCallback? onStatusChanged; // Callback for status changes
   final VoidCallback? onTap; // Callback for tapping to view details
 
@@ -24,26 +26,50 @@ class Task extends StatelessWidget {
   });
 
   @override
+  State<Task> createState() => _TaskState();
+}
+
+class _TaskState extends State<Task> {
+  String? _currentUserName; // Store the current user's full name
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUser(); // Load current user data
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataString = prefs.getString('user');
+    if (userDataString != null) {
+      final userData = jsonDecode(userDataString) as Map<String, dynamic>;
+      setState(() {
+        _currentUserName = '${userData['first_name']} ${userData['last_name']}';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    String formattedDate = DateFormat('yyyy-MM-dd HH:mm').format(completionDate);
-    bool isToday = DateTime.now().day == completionDate.day &&
-        DateTime.now().month == completionDate.month &&
-        DateTime.now().year == completionDate.year;
+    String formattedDate = DateFormat('yyyy-MM-dd HH:mm').format(widget.completionDate);
+    bool isToday = DateTime.now().day == widget.completionDate.day &&
+        DateTime.now().month == widget.completionDate.month &&
+        DateTime.now().year == widget.completionDate.year;
     if (isToday) {
-      formattedDate = 'Today, ${DateFormat('hh:mm a').format(completionDate)}';
+      formattedDate = 'Today, ${DateFormat('hh:mm a').format(widget.completionDate)}';
     }
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Dismissible(
-        key: Key('${title}_${formattedDate}_${status.name}'), // Unique key including status
+        key: Key('${widget.title}_${formattedDate}_${widget.status.name}'), // Unique key including status
         direction: DismissDirection.endToStart,
         onDismissed: (direction) {
-          if (onStatusChanged != null) {
-            onStatusChanged!(); // Notify parent to update status
+          if (widget.onStatusChanged != null) {
+            widget.onStatusChanged!(); // Notify parent to update status
           }
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Task ${status == TaskStatus.completed ? "reopened" : "completed"}')),
+            SnackBar(content: Text('Task ${widget.status == TaskStatus.completed ? "reopened" : "completed"}')),
           );
         },
         background: _buildSwipeBackground(context),
@@ -52,7 +78,7 @@ class Task extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.0),
           ),
-          color: status == TaskStatus.completed ? Colors.green[50] : Colors.white,
+          color: widget.status == TaskStatus.completed ? Colors.green[50] : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -65,14 +91,14 @@ class Task extends StatelessWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          if (status == TaskStatus.completed)
+                          if (widget.status == TaskStatus.completed)
                             Padding(
                               padding: const EdgeInsets.only(right: 8.0),
                               child: Icon(Icons.check_circle, color: Colors.green, size: 16.0),
                             ),
                           Expanded(
                             child: Text(
-                              title,
+                              widget.title,
                               style: TextStyle(
                                 fontSize: 16.0,
                                 fontWeight: FontWeight.bold,
@@ -86,7 +112,7 @@ class Task extends StatelessWidget {
                       ),
                       SizedBox(height: 4.0),
                       Text(
-                        description,
+                        widget.description,
                         style: TextStyle(
                           fontSize: 14.0,
                           color: Colors.grey[600],
@@ -102,7 +128,7 @@ class Task extends StatelessWidget {
                           color: Colors.grey[600],
                         ),
                       ),
-                      if (status == TaskStatus.completed)
+                      if (widget.status == TaskStatus.completed)
                         Row(
                           children: List.generate(3, (index) => Icon(Icons.star, color: Colors.grey, size: 12.0))
                               .map((icon) => Padding(
@@ -115,19 +141,21 @@ class Task extends StatelessWidget {
                   ),
                 ),
                 Row(
-                  children: assignees.take(2).map((assignee) {
-                    String? avatarUrl;
-                    if (assignee is Map) {
-                      avatarUrl = assignee['avatar'] as String?;
-                    } else if (assignee is String) {
-                      avatarUrl = assignee; // Fallback for plain strings
-                    }
+                  children: widget.assignees.take(2).map((assignee) {
+                    final fullName = assignee['name'] ?? 'Unknown';
+                    final displayName = _currentUserName == fullName ? '$fullName (You)' : fullName;
                     return Padding(
                       padding: const EdgeInsets.only(left: 8.0),
-                      child: CircleAvatar(
-                        radius: 16.0,
-                        backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                        child: avatarUrl == null ? Icon(Icons.person, color: Colors.grey) : null,
+                      child: Tooltip(
+                        message: displayName, // Show full name (with "(You)" if applicable) on hover
+                        child: CircleAvatar(
+                          radius: 16.0,
+                          backgroundColor: Colors.blue,
+                          child: Text(
+                            fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
+                            style: TextStyle(color: Colors.white, fontSize: 10.0),
+                          ),
+                        ),
                       ),
                     );
                   }).toList(),
@@ -141,7 +169,7 @@ class Task extends StatelessWidget {
   }
 
   Widget _buildSwipeBackground(BuildContext context) {
-    return status == TaskStatus.pending || status == TaskStatus.inProgress
+    return widget.status == TaskStatus.pending || widget.status == TaskStatus.inProgress
         ? Container(
             color: Colors.green, // Green for completing (pending/inProgress -> completed)
             alignment: Alignment.centerRight,

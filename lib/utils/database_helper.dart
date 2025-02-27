@@ -20,7 +20,7 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(path, version: 3, onCreate: _createDB, onUpgrade: _upgradeDB);
+    return await openDatabase(path, version: 4, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
 
   Future _createDB(Database db, int version) async {
@@ -32,7 +32,6 @@ class DatabaseHelper {
       status TEXT NOT NULL,
       description TEXT NOT NULL,
       assignees TEXT NOT NULL,
-      subtasks TEXT NOT NULL,
       tags TEXT NOT NULL DEFAULT '[]',
       priority TEXT NOT NULL DEFAULT 'medium'
     )
@@ -44,16 +43,25 @@ class DatabaseHelper {
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 3) {
-      await db.execute('DELETE FROM tasks');
-      await db.execute('DELETE FROM sqlite_sequence WHERE name = "tasks"');
-      await db.execute('ALTER TABLE tasks ADD COLUMN tags TEXT NOT NULL DEFAULT \'[]\'');
-      await db.execute('ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT \'medium\'');
+    if (oldVersion < 4) {
+      // Ensure all columns and indexes exist (using assignees)
+      await db.execute('''
+      CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        completionDate TEXT NOT NULL,
+        status TEXT NOT NULL,
+        description TEXT NOT NULL,
+        assignees TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '[]',
+        priority TEXT NOT NULL DEFAULT 'medium'
+      )
+      ''');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_title ON tasks(title)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_completion_date ON tasks(completionDate)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_status ON tasks(status)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_priority ON tasks(priority)');
-      await db.execute('PRAGMA user_version = 3');
+      await db.execute('PRAGMA user_version = 4');
     }
   }
 
@@ -64,9 +72,8 @@ class DatabaseHelper {
       'completionDate': task.completionDate.toIso8601String(),
       'status': task.status.name,
       'description': task.description,
-      'assignees': _encodeAssignees(task.assignees),
-      'subtasks': _encodeSubtasks(task.subtasks ?? []),
-      'tags': _encodeTags(task.tags ?? []),
+      'assignees': jsonEncode(task.assignees),
+      'tags': jsonEncode(task.tags ?? []),
       'priority': task.priority.name,
     });
   }
@@ -82,7 +89,6 @@ class DatabaseHelper {
         status: _parseStatus(maps[i]['status'] as String),
         description: maps[i]['description'] as String,
         assignees: _decodeAssignees(maps[i]['assignees'] as String),
-        subtasks: _decodeSubtasks(maps[i]['subtasks'] as String),
         tags: _decodeTags(maps[i]['tags'] as String),
         priority: _parsePriority(maps[i]['priority'] as String),
       );
@@ -96,52 +102,54 @@ class DatabaseHelper {
     List<String>? tags, // For filtering by tags
   }) async {
     final db = await database;
-    List<Map<String, dynamic>> maps = await db.query('tasks');
-    List<TaskData> filteredTasks = [];
+    String whereClause = '';
+    List<dynamic> whereArgs = [];
 
-    for (var map in maps) {
-      TaskData task = TaskData(
-        id: map['id'] as int?,
-        title: map['title'] as String,
-        completionDate: DateTime.parse(map['completionDate'] as String),
-        status: _parseStatus(map['status'] as String),
-        description: map['description'] as String,
-        assignees: _decodeAssignees(map['assignees'] as String),
-        subtasks: _decodeSubtasks(map['subtasks'] as String),
-        tags: _decodeTags(map['tags'] as String),
-        priority: _parsePriority(map['priority'] as String),
-      );
-
-      bool matches = true;
-
-      if (searchQuery != null && searchQuery.isNotEmpty) {
-        matches = matches && task.title.toLowerCase().contains(searchQuery.toLowerCase());
-      }
-
-      if (completionDate != null) {
-        final startOfDay = DateTime(completionDate.year, completionDate.month, completionDate.day);
-        final endOfDay = startOfDay.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
-        matches = matches && (task.completionDate.isAfter(startOfDay) || task.completionDate.isAtSameMomentAs(startOfDay)) &&
-            task.completionDate.isBefore(endOfDay);
-      }
-
-      if (priority != null) {
-        matches = matches && task.priority == priority;
-      }
-
-      if (tags != null && tags.isNotEmpty) {
-        final taskTags = task.tags ?? [];
-        matches = matches && tags.every((tag) => taskTags.contains(tag));
-      }
-
-      if (matches) {
-        filteredTasks.add(task);
-      }
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      whereClause += 'title LIKE ?';
+      whereArgs.add('%$searchQuery%'); // Fuzzy search using LIKE
     }
 
-    print('Filter query: Search=$searchQuery, Date=$completionDate, Priority=$priority, Tags=$tags');
-    print('Filtered tasks count: ${filteredTasks.length}, Tasks: ${filteredTasks.map((task) => task.toJson())}');
-    return filteredTasks;
+    if (completionDate != null) {
+      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
+      final startOfDay = DateTime(completionDate.year, completionDate.month, completionDate.day);
+      final endOfDay = startOfDay.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
+      whereClause += 'completionDate BETWEEN ? AND ?';
+      whereArgs.add(startOfDay.toIso8601String());
+      whereArgs.add(endOfDay.toIso8601String());
+    }
+
+    if (priority != null) {
+      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
+      whereClause += 'priority = ?';
+      whereArgs.add(priority.name);
+    }
+
+    if (tags != null && tags.isNotEmpty) {
+      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
+      whereClause += 'tags LIKE ?';
+      whereArgs.add('%${jsonEncode(tags)}%'); // Fuzzy match for tags (JSON array)
+    }
+
+    print('Filter query: WHERE $whereClause, Args: $whereArgs'); // Debug log
+    final maps = await db.query(
+      'tasks',
+      where: whereClause.isNotEmpty ? whereClause : null,
+      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+    );
+
+    return List.generate(maps.length, (i) {
+      return TaskData(
+        id: maps[i]['id'] as int?,
+        title: maps[i]['title'] as String,
+        completionDate: DateTime.parse(maps[i]['completionDate'] as String),
+        status: _parseStatus(maps[i]['status'] as String),
+        description: maps[i]['description'] as String,
+        assignees: _decodeAssignees(maps[i]['assignees'] as String),
+        tags: _decodeTags(maps[i]['tags'] as String),
+        priority: _parsePriority(maps[i]['priority'] as String),
+      );
+    });
   }
 
   Future<int> updateTask(TaskData task) async {
@@ -153,9 +161,8 @@ class DatabaseHelper {
         'completionDate': task.completionDate.toIso8601String(),
         'status': task.status.name,
         'description': task.description,
-        'assignees': _encodeAssignees(task.assignees),
-        'subtasks': _encodeSubtasks(task.subtasks ?? []),
-        'tags': _encodeTags(task.tags ?? []),
+        'assignees': jsonEncode(task.assignees),
+        'tags': jsonEncode(task.tags ?? []),
         'priority': task.priority.name,
       },
       where: 'id = ?', // Use id instead of title
@@ -173,21 +180,9 @@ class DatabaseHelper {
     );
   }
 
-  String _encodeAssignees(List<Map<String, dynamic>> assignees) {
-    return jsonEncode(assignees);
-  }
-
   List<Map<String, dynamic>> _decodeAssignees(String encoded) {
-    return (jsonDecode(encoded) as List).cast<Map<String, dynamic>>();
-  }
-
-  String _encodeSubtasks(List<Subtask>? subtasks) {
-    return jsonEncode(subtasks?.map((subtask) => subtask.toJson()).toList() ?? []);
-  }
-
-  List<Subtask> _decodeSubtasks(String encoded) {
     final List<dynamic> decoded = jsonDecode(encoded);
-    return decoded.map((e) => Subtask.fromJson(e as Map<String, dynamic>)).toList();
+    return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   String _encodeTags(List<String>? tags) {

@@ -8,6 +8,9 @@ import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/sync_manager.dart';
 import 'package:smarttask/utils/styles.dart'; // Assuming CustomStyles is defined here
+import 'package:smarttask/services/user_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class CreateTaskScreen extends StatefulWidget {
   final TaskData? task; // Optional task for editing
@@ -23,30 +26,61 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _titleController = TextEditingController();
   final _tagController = TextEditingController(); // New controller for tags
   final _descriptionController = TextEditingController();
-  DateTime _dueDate = DateTime.now(); // Updated from completionDate for consistency with your file
+  DateTime _dueDate = DateTime.now(); // Updated from completionDate for consistency
   TaskStatus _status = TaskStatus.pending;
   Priority _priority = Priority.medium; // Default to medium
-  List<Map<String, dynamic>> _assignees = [
-    {'name': 'Leroy Jenkins', 'avatar': 'https://i.pravatar.cc/150?u=leroy'},
-    {'name': 'Janna Dark', 'avatar': 'https://i.pravatar.cc/150?u=janna'},
-  ];
-  List<Subtask> _subtasks = [Subtask(title: '')];
+  List<Map<String, dynamic>> _assignees = []; // Start with empty list, requiring at least one assignee
   List<String> _tags = []; // New field for tags
   final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
   final SyncManager _syncManager = SyncManager.instance;
+  final UserService _userService = UserService();
+  List<Map<String, dynamic>> _users = []; // List of users from API
+  bool _isLoadingUsers = true;
+  String? _errorMessage;
+  String? _currentUserName; // Store the current user's full name
 
   @override
   void initState() {
     super.initState();
+    _fetchUsers();
+    _loadCurrentUser(); // Load current user data
     if (widget.task != null) {
       _titleController.text = widget.task!.title;
       _descriptionController.text = widget.task!.description;
       _dueDate = widget.task!.completionDate; // Updated from completionDate for consistency
       _status = widget.task!.status;
       _priority = widget.task!.priority; // Initialize priority
-      _assignees = widget.task!.assignees;
-      _subtasks = widget.task!.subtasks ?? [Subtask(title: '')]; // Handle nullable subtasks
+      _assignees = widget.task!.assignees.isEmpty ? [] : widget.task!.assignees; // Initialize with existing assignees
       _tags = widget.task!.tags ?? []; // Initialize tags
+    }
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataString = prefs.getString('user');
+    if (userDataString != null) {
+      final userData = jsonDecode(userDataString) as Map<String, dynamic>;
+      setState(() {
+        _currentUserName = '${userData['first_name']} ${userData['last_name']}';
+      });
+    }
+  }
+
+  Future<void> _fetchUsers() async {
+    setState(() {
+      _isLoadingUsers = true;
+      _errorMessage = null;
+    });
+    try {
+      _users = await _userService.fetchUsers();
+      setState(() {
+        _isLoadingUsers = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingUsers = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
     }
   }
 
@@ -76,20 +110,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     }
   }
 
-  void _addSubtask() {
-    setState(() {
-      _subtasks.add(Subtask(title: ''));
-    });
-  }
-
-  void _removeSubtask(int index) {
-    setState(() {
-      if (_subtasks.length > 1) {
-        _subtasks.removeAt(index);
-      }
-    });
-  }
-
   void _addTag(String tag) {
     setState(() {
       if (!_tags.contains(tag) && tag.isNotEmpty) {
@@ -104,22 +124,101 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     });
   }
 
+  void _showAssigneeSelector() async {
+    if (_isLoadingUsers) return;
+
+    final selectedUsers = await showDialog<List<Map<String, dynamic>>>(
+      context: context,
+      builder: (context) {
+        List<Map<String, dynamic>> tempSelectedAssignees = [..._assignees];
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Select Assignees'),
+              content: _users.isEmpty
+                  ? _isLoadingUsers
+                      ? Center(child: CircularProgressIndicator())
+                      : Center(child: Text('No users found'))
+                  : SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: _users.map((user) {
+                          final userId = user['id'] as int;
+                          final fullName = '${user['first_name']} ${user['last_name']}';
+                          final displayName = _currentUserName == fullName ? '$fullName (You)' : fullName;
+                          final isSelected = tempSelectedAssignees.any((a) => a['name'] == fullName);
+                          return CheckboxListTile(
+                            title: Row(
+                              mainAxisSize: MainAxisSize.min, // Limit row width
+                              children: [
+                                CircleAvatar(
+                                  radius: 16.0,
+                                  backgroundColor: Colors.blue,
+                                  child: Text(
+                                    fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                SizedBox(width: 8.0),
+                                Expanded( // Allow text to wrap or truncate
+                                  child: Text(
+                                    displayName,
+                                    style: TextStyle(fontSize: 14.0),
+                                    overflow: TextOverflow.ellipsis, // Truncate with ellipsis if too long
+                                    maxLines: 1, // Limit to one line
+                                  ),
+                                ),
+                              ],
+                            ),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                if (value == true) {
+                                  tempSelectedAssignees.add({
+                                    'name': fullName,
+                                    'avatar': 'https://i.pravatar.cc/150?u=$fullName', // Keep avatar for DB, but not displayed
+                                  });
+                                } else {
+                                  tempSelectedAssignees.removeWhere((a) => a['name'] == fullName);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, tempSelectedAssignees),
+                  child: Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (selectedUsers != null && selectedUsers.isNotEmpty) {
+      setState(() {
+        _assignees = selectedUsers;
+      });
+    }
+  }
+
   void _saveTask() async {
-    if (_formKey.currentState!.validate()) {
+    if (_formKey.currentState!.validate() && _assignees.isNotEmpty) {
       final task = TaskData(
         id: widget.task?.id, // Preserve the original id for updates
         title: _titleController.text,
         completionDate: _dueDate, // Updated from dueDate for consistency
         status: _status,
         description: _descriptionController.text,
-        assignees: _assignees,
-        subtasks: _subtasks.where((subtask) => subtask.title.isNotEmpty).map((subtask) => Subtask(
-          title: subtask.title,
-          isCompleted: subtask.isCompleted, // Preserve completion status for updates
-        )).toList().isEmpty ? null : _subtasks.where((subtask) => subtask.title.isNotEmpty).map((subtask) => Subtask(
-          title: subtask.title,
-          isCompleted: subtask.isCompleted, // Preserve completion status for updates
-        )).toList(), // Handle nullable subtasks
+        assignees: _assignees.isEmpty ? [] : _assignees, // Handle empty assignees (now validated)
         tags: _tags.isEmpty ? null : _tags, // Handle nullable tags
         priority: _priority, // Include priority
       ).copyWith(); // Use copyWith to create the final instance (optional, for consistency)
@@ -133,6 +232,10 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       }
       _syncManager.syncTasksToServer(); // Sync to server
       context.goNamed('home'); // Return to HomeScreen, which will refresh automatically
+    } else if (_assignees.isEmpty) {
+      setState(() {
+        _errorMessage = 'At least one assignee is required';
+      });
     }
   }
 
@@ -314,14 +417,20 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               ),
               SizedBox(height: 8.0),
               ..._assignees.map((assignee) {
+                final fullName = assignee['name'] ?? 'Unknown';
+                final displayName = _currentUserName == fullName ? '$fullName (You)' : fullName;
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
                     radius: 16.0,
-                    backgroundImage: NetworkImage(assignee['avatar'] ?? 'https://i.pravatar.cc/150?u=default'),
+                    backgroundColor: Colors.blue,
+                    child: Text(
+                      fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                   title: Text(
-                    assignee['name'] ?? 'Unknown',
+                    displayName,
                     style: TextStyle(fontSize: 14.0, color: Colors.black87),
                   ),
                   trailing: IconButton(
@@ -336,70 +445,21 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               }).toList(),
               SizedBox(height: 8.0),
               ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _assignees.add({
-                      'name': 'New Assignee',
-                      'avatar': 'https://i.pravatar.cc/150?u=new${_assignees.length}',
-                    });
-                  });
-                },
+                onPressed: _showAssigneeSelector,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
                 ),
                 child: Text('Add Assignee', style: TextStyle(color: Colors.white)),
               ),
-              SizedBox(height: 16.0),
-              Text(
-                'Subtasks',
-                style: CustomStyles.textLabelStyle,
-              ),
-              SizedBox(height: 8.0),
-              ..._subtasks.asMap().entries.map((entry) {
-                final index = entry.key;
-                final subtask = entry.value;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: subtask.title,
-                          decoration: InputDecoration(
-                            hintText: 'Enter subtask',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.0),
-                              borderSide: BorderSide(color: Colors.blue),
-                            ),
-                          ),
-                          onChanged: (value) {
-                            setState(() {
-                              _subtasks[index] = subtask.copyWith(title: value); // Use copyWith for Subtask
-                            });
-                          },
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: () => _removeSubtask(index),
-                      ),
-                    ],
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(color: Colors.red, fontSize: 14.0),
                   ),
-                );
-              }).toList(),
-              SizedBox(height: 8.0),
-              ElevatedButton(
-                onPressed: _addSubtask,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
                 ),
-                child: Text('Add Subtask', style: TextStyle(color: Colors.white)),
-              ),
               SizedBox(height: 16.0),
               ElevatedButton(
                 onPressed: _saveTask,

@@ -7,6 +7,8 @@ import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/sync_manager.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _selectedDate; // Filter by completion date
   Priority? _selectedPriority; // Filter by priority (low, medium, high)
   List<String> _selectedTags = []; // Filter by tags
+  String _userFirstName = ''; // Initialize as empty string
 
   @override
   void initState() {
@@ -33,12 +36,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _routerDelegate = GoRouter.of(context).routerDelegate; // Store GoRouterDelegate
     _navigationListener = () {
       final currentLocation = _routerDelegate.currentConfiguration.fullPath;
-      if (currentLocation == '/') {
+      if (currentLocation == '/home') {
         _loadFilteredTasks(); // Refresh filtered tasks when returning to HomeScreen
+        _loadUserData(); // Load user data on navigation
       }
     };
     _routerDelegate.addListener(_navigationListener); // Use stored reference
-    _loadFilteredTasks();
+    _checkAuthState(); // Check authentication state and load user data
   }
 
   @override
@@ -46,6 +50,35 @@ class _HomeScreenState extends State<HomeScreen> {
     _syncManager.dispose(); // Clean up SyncManager
     _routerDelegate.removeListener(_navigationListener); // Use stored reference
     super.dispose();
+  }
+
+  Future<void> _checkAuthState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    final userDataString = prefs.getString('user');
+
+    if (token == null || token.isEmpty) {
+      context.goNamed('login'); // Redirect to login if no token
+    } else {
+      if (userDataString != null) {
+        final userData = jsonDecode(userDataString) as Map<String, dynamic>;
+        setState(() {
+          _userFirstName = userData['first_name'] ?? 'User'; // Set from SharedPreferences
+        });
+      }
+      _loadFilteredTasks();
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataString = prefs.getString('user');
+    if (userDataString != null) {
+      final userData = jsonDecode(userDataString) as Map<String, dynamic>;
+      setState(() {
+        _userFirstName = userData['first_name'] ?? 'User'; // Update if changed
+      });
+    }
   }
 
   Future<void> _loadFilteredTasks() async {
@@ -138,6 +171,17 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedTags = [];
     });
     _loadFilteredTasks();
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('user');
+    await prefs.remove('email');
+    setState(() {
+      _userFirstName = ''; // Reset username
+    });
+    context.go('/welcome'); // Redirect to login screen
   }
 
   void _showFilterDialog(BuildContext context) {
@@ -325,12 +369,28 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Hey, Elie 👋',
+              'Hey, $_userFirstName 👋',
               style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
             ),
-            CircleAvatar(
-              radius: 16.0,
-              backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=elie'), // Using pravatar.cc
+            PopupMenuButton<String>(
+              icon: CircleAvatar(
+                radius: 16.0,
+                backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=$_userFirstName'), // Dynamic avatar
+              ),
+              onSelected: (value) {
+                if (value == 'logout') {
+                  _logout();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: ListTile(
+                    leading: Icon(Icons.logout, color: Colors.red),
+                    title: Text('Logout'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -15,4 +15,5 @@ class Constants {
   static const String appVersion = '1.0.0';
   static const String appDescription = 'A simple task management app';
   static const String databaseName = 'tasks.db';
+  static const baseUrl = 'https://smart-task-backend-production.up.railway.app/api/v1';
 }

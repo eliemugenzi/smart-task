@@ -8,6 +8,9 @@ import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/styles.dart'; // Assuming CustomStyles is defined here
 import 'package:smarttask/utils/sync_manager.dart';
+import 'package:smarttask/services/user_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class TaskDetailsScreen extends StatefulWidget {
   const TaskDetailsScreen({super.key});
@@ -19,12 +22,18 @@ class TaskDetailsScreen extends StatefulWidget {
 class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
   final SyncManager _syncManager = SyncManager.instance;
+  final UserService _userService = UserService();
   TaskData? _task; // Make nullable to handle loading state
+  List<Map<String, dynamic>> _users = []; // List of users from API
+  bool _isLoadingUsers = true;
+  String? _errorMessage;
+  String? _currentUserName; // Store the current user's full name
 
   @override
   void initState() {
     super.initState();
-    // Do not access context here; initialize _task later
+    _fetchUsers();
+    _loadCurrentUser(); // Load current user data
   }
 
   @override
@@ -37,6 +46,35 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     }
 
     _task = TaskData.fromJson(taskJson);
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataString = prefs.getString('user');
+    if (userDataString != null) {
+      final userData = jsonDecode(userDataString) as Map<String, dynamic>;
+      setState(() {
+        _currentUserName = '${userData['first_name']} ${userData['last_name']}';
+      });
+    }
+  }
+
+  Future<void> _fetchUsers() async {
+    setState(() {
+      _isLoadingUsers = true;
+      _errorMessage = null;
+    });
+    try {
+      _users = await _userService.fetchUsers();
+      setState(() {
+        _isLoadingUsers = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingUsers = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   Future<void> _updateTask() async {
@@ -241,14 +279,20 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               ),
               SizedBox(height: 8.0),
               ..._task!.assignees.map((assignee) {
+                final fullName = assignee['name'] ?? 'Unknown';
+                final displayName = _currentUserName == fullName ? '$fullName (You)' : fullName;
                 return ListTile(
                   contentPadding: EdgeInsets.zero, // Remove default padding for exact match
                   leading: CircleAvatar(
                     radius: 16.0,
-                    backgroundImage: NetworkImage(assignee['avatar'] ?? 'https://i.pravatar.cc/150?u=default'),
+                    backgroundColor: Colors.blue,
+                    child: Text(
+                      fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                   title: Text(
-                    assignee['name'] ?? 'Unknown',
+                    displayName,
                     style: TextStyle(
                       fontSize: 14.0,
                       color: Colors.black87,
@@ -257,51 +301,14 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                   dense: true, // Compact spacing to match the image
                 );
               }).toList(),
-              SizedBox(height: 16.0),
-              // Subtasks (show label only if subtasks exist)
-              if (_task!.subtasks != null && _task!.subtasks!.isNotEmpty) ...[
-                Text(
-                  'Subtasks',
-                  style: CustomStyles.textLabelStyle, // Using CustomStyles for consistency
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(color: Colors.red, fontSize: 14.0),
+                  ),
                 ),
-                SizedBox(height: 8.0),
-                ..._task!.subtasks!.map((subtask) {
-                  return CheckboxListTile(
-                    contentPadding: EdgeInsets.zero, // Remove default padding
-                    title: Text(
-                      subtask.title,
-                      style: TextStyle(
-                        fontSize: 14.0,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    value: subtask.isCompleted,
-                    onChanged: (bool? value) async {
-                      if (value != null && _task != null) {
-                        final updatedSubtasks = _task!.subtasks!.map((s) => s.title == subtask.title
-                            ? s.copyWith(isCompleted: value) // Use copyWith for Subtask
-                            : s).toList();
-                        final updatedTask = _task!.copyWith( // Use copyWith for TaskData
-                          subtasks: updatedSubtasks,
-                        );
-                        await _databaseHelper.updateTask(updatedTask);
-                        setState(() {
-                          _task = updatedTask;
-                        });
-                        _syncManager.syncTasksToServer(); // Sync updated task to server
-                        // No need for _refreshHomeScreen; navigation will handle it
-                      }
-                    },
-                    controlAffinity: ListTileControlAffinity.leading,
-                    activeColor: Colors.green,
-                    checkColor: Colors.white, // Match checkbox check color
-                    checkboxShape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4.0), // Rounded checkbox
-                    ),
-                    dense: true, // Compact spacing
-                  );
-                }),
-              ],
             ],
           ),
         ),

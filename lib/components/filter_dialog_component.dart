@@ -1,4 +1,3 @@
-// components/filter_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:smarttask/components/button_component.dart';
@@ -8,7 +7,7 @@ class FilterDialog extends StatefulWidget {
   final DateTime? selectedDate;
   final Priority? selectedPriority;
   final List<String> selectedTags;
-  final VoidCallback onApply;
+  final Function(DateTime?, Priority?, List<String>) onApply; // Modified callback
   final VoidCallback onClear;
 
   const FilterDialog({
@@ -85,52 +84,91 @@ class _FilterDialogState extends State<FilterDialog> {
   }
 
   void _showTagsFilter(BuildContext dialogContext) {
-    final TextEditingController _tagController = TextEditingController();
-    List<String> availableTags = ['urgent', 'personal', 'work', 'meeting']; // Example tags; customize as needed
+    final TextEditingController tagController = TextEditingController();
+    // Use a more comprehensive list of default tags
+    List<String> availableTags = ['urgent', 'personal', 'work', 'meeting', 'home', 'important', 'low-priority'];
     List<String> tempSelectedTags = [..._selectedTags]; // Copy current tags
+    
+    // Add any custom tags that aren't in the default list
+    for (String tag in _selectedTags) {
+      if (!availableTags.contains(tag)) {
+        availableTags.add(tag);
+      }
+    }
 
     showDialog(
       context: dialogContext,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setDialogState) {
+            // This function adds a new tag
+            void addNewTag(String value) {
+              if (value.isNotEmpty && !availableTags.contains(value)) {
+                setDialogState(() {
+                  availableTags.add(value);
+                  tempSelectedTags.add(value);
+                  tagController.clear();
+                });
+                print('Added tag: $value');
+                print('Selected tags: $tempSelectedTags');
+              }
+            }
+
             return AlertDialog(
               title: Text('Select Tags'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ...availableTags.map((tag) {
-                    return CheckboxListTile(
-                      title: Text(tag),
-                      value: tempSelectedTags.contains(tag),
-                      onChanged: (bool? value) {
-                        setState(() {
-                          if (value == true) {
-                            tempSelectedTags.add(tag);
-                          } else {
-                            tempSelectedTags.remove(tag);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                  TextField(
-                    controller: _tagController,
-                    decoration: InputDecoration(
-                      hintText: 'Add custom tag...',
-                      border: OutlineInputBorder(),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // List of predefined tags with checkboxes
+                    ...availableTags.map((tag) {
+                      return CheckboxListTile(
+                        title: Text(tag),
+                        value: tempSelectedTags.contains(tag),
+                        onChanged: (bool? value) {
+                          setDialogState(() {
+                            if (value == true) {
+                              tempSelectedTags.add(tag);
+                            } else {
+                              tempSelectedTags.remove(tag);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                    
+                    // Custom tag input with button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: tagController,
+                              decoration: InputDecoration(
+                                hintText: 'Add custom tag...',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: addNewTag,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () {
+                              addNewTag(tagController.text);
+                            },
+                            child: Text('Add'),
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    onSubmitted: (value) {
-                      if (value.isNotEmpty && !availableTags.contains(value)) {
-                        setState(() {
-                          availableTags.add(value);
-                          tempSelectedTags.add(value);
-                        });
-                        _tagController.clear();
-                      }
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -139,6 +177,7 @@ class _FilterDialogState extends State<FilterDialog> {
                 ),
                 TextButton(
                   onPressed: () {
+                    // Update the main dialog's state with selected tags
                     setState(() {
                       _selectedTags = tempSelectedTags;
                     });
@@ -182,7 +221,14 @@ class _FilterDialogState extends State<FilterDialog> {
             SizedBox(height: 16),
             CustomButton(
               text: 'Clear Filters',
-              onPressed: widget.onClear,
+              onPressed: () {
+                setState(() {
+                  _selectedDate = null;
+                  _selectedPriority = null;
+                  _selectedTags = [];
+                });
+                widget.onClear();
+              },
             ),
           ],
         ),
@@ -194,7 +240,8 @@ class _FilterDialogState extends State<FilterDialog> {
         ),
         TextButton(
           onPressed: () {
-            widget.onApply();
+            // Pass selected values back with the callback
+            widget.onApply(_selectedDate, _selectedPriority, _selectedTags);
             Navigator.pop(context);
           },
           child: Text('Apply'),

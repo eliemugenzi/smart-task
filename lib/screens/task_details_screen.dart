@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:smarttask/components/app_bar_compoment.dart';
 import 'package:smarttask/components/assignee_initials_component.dart';
 import 'package:smarttask/models/task.dart';
+import 'package:smarttask/services/notification_service.dart';
 import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/styles.dart'; // Assuming CustomStyles is defined here
@@ -118,6 +119,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
 
     if (confirm == true) {
+      await NotificationService.instance.cancelTaskReminder(_task!.id!);
       await _databaseHelper.deleteTask(_task!.id); // Use id instead of title
       _syncManager.syncTasksToServer(); // Sync deletion to server (if needed)
       context.goNamed('home'); // Navigate back to HomeScreen, triggering refresh

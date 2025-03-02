@@ -1,0 +1,5 @@
+<resources>
+    <string name="default_notification_channel_id">task_reminders</string>
+    <string name="default_notification_channel_name">Task Reminders</string>
+    <string name="default_notification_channel_description">Notifications for upcoming task reminders</string>
+</resources>

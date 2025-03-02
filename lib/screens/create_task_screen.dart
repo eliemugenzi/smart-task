@@ -8,6 +8,7 @@ import 'package:smarttask/components/assignee_initials_component.dart';
 import 'package:smarttask/components/button_component.dart';
 import 'package:smarttask/components/text_field_component.dart';
 import 'package:smarttask/models/task.dart';
+import 'package:smarttask/services/notification_service.dart';
 import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/helpers.dart';
 import 'package:smarttask/utils/sync_manager.dart';
@@ -225,8 +226,10 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         await _databaseHelper.insertTask(task);
       } else {
         // Update existing task
-        await _databaseHelper.updateTask(task); // Uses task.id
+        await _databaseHelper.updateTask(task); // Uses task.id   
       }
+      final newTask = task.copyWith(id: task.id);
+        await NotificationService.instance.scheduleTaskReminder(newTask);
       _syncManager.syncTasksToServer(); // Sync to server
       context.goNamed('home'); // Return to HomeScreen, which will refresh automatically
     } else if (_assignees.isEmpty) {

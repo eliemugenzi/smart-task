@@ -6,6 +6,7 @@ import 'package:smarttask/components/task_component.dart';
 import 'package:smarttask/components/text_field_component.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:go_router/go_router.dart';
+import 'package:smarttask/services/notification_service.dart';
 import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/sync_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -215,6 +216,11 @@ class _HomeScreenState extends State<HomeScreen> {
         onClear: _clearFilters,
       ),
     );
+  }
+
+  Future<void> _scheduleTaskReminders() async {
+    final tasks = await _databaseHelper.getTasks();
+    await NotificationService.instance;
   }
 
   @override

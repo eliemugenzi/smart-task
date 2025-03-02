@@ -1,4 +1,4 @@
-# .github/workflows/smarttask_release.yml
+# .github/workflows/release.yml
 name: SmartTask Release
 
 # Controls when the workflow will run
@@ -40,7 +40,7 @@ jobs:
 
       # Step 4: Install dependencies
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get && flutter pub upgrade
 
       # Step 5: Build Android APK (for CI/CD)
       - name: Build Android APK

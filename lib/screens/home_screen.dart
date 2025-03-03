@@ -1,4 +1,3 @@
-// screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:smarttask/components/app_bar_compoment.dart';
 import 'package:smarttask/components/assignee_initials_component.dart';
@@ -7,6 +6,7 @@ import 'package:smarttask/components/task_component.dart';
 import 'package:smarttask/components/text_field_component.dart';
 import 'package:smarttask/models/task.dart';
 import 'package:go_router/go_router.dart';
+import 'package:smarttask/services/notification_service.dart';
 import 'package:smarttask/utils/database_helper.dart';
 import 'package:smarttask/utils/sync_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,13 +21,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late List<TaskData> _tasks;
+  late List<TaskData> _tasks = [];
   bool _isLoading = true; // Track loading state
   final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
   final SyncManager _syncManager = SyncManager.instance;
   late VoidCallback _navigationListener; // Store the listener function
   late GoRouterDelegate _routerDelegate; // Store the GoRouterDelegate reference
   String _searchQuery = ''; // Search query for task names
+  TextEditingController _searchController = TextEditingController(); // Controller for search field
   DateTime? _selectedDate; // Filter by completion date
   Priority? _selectedPriority; // Filter by priority (low, medium, high)
   List<String> _selectedTags = []; // Filter by tags
@@ -36,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.text = _searchQuery; // Initialize search controller with current query
     _routerDelegate = GoRouter.of(context).routerDelegate; // Store GoRouterDelegate
     _navigationListener = () {
       final currentLocation = _routerDelegate.currentConfiguration.fullPath;
@@ -50,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _searchController.dispose(); // Dispose of the text controller
     _syncManager.dispose(); // Clean up SyncManager
     _routerDelegate.removeListener(_navigationListener); // Use stored reference
     super.dispose();
@@ -94,7 +97,6 @@ class _HomeScreenState extends State<HomeScreen> {
       priority: _selectedPriority,
       tags: _selectedTags.isNotEmpty ? _selectedTags : null,
     );
-    print('Loaded filtered tasks: ${_tasks.map((task) => task.toJson())}');
     setState(() {
       _isLoading = false; // Stop loading
     });
@@ -169,11 +171,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void _clearFilters() {
     setState(() {
       _searchQuery = '';
+      _searchController.clear(); // Clear the search field
       _selectedDate = null;
       _selectedPriority = null;
       _selectedTags = [];
     });
     _loadFilteredTasks();
+  }
+
+  // Method to check if any filters are active
+  bool _areFiltersActive() {
+    return _searchQuery.isNotEmpty || 
+           _selectedDate != null || 
+           _selectedPriority != null || 
+           _selectedTags.isNotEmpty;
   }
 
   Future<void> _logout() async {
@@ -194,10 +205,22 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedDate: _selectedDate,
         selectedPriority: _selectedPriority,
         selectedTags: _selectedTags,
-        onApply: _loadFilteredTasks,
+        onApply: (date, priority, tags) {
+          setState(() {
+            _selectedDate = date;
+            _selectedPriority = priority;
+            _selectedTags = tags;
+          });
+          _loadFilteredTasks(); // Load tasks with the new filters
+        },
         onClear: _clearFilters,
       ),
     );
+  }
+
+  Future<void> _scheduleTaskReminders() async {
+    final tasks = await _databaseHelper.getTasks();
+    await NotificationService.instance;
   }
 
   @override
@@ -225,83 +248,150 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: PreferredSize(
-        preferredSize: Size.fromHeight(kToolbarHeight),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: CustomTextField(
-                  labelText: 'Search tasks by name...',
-                  controller: TextEditingController(text: _searchQuery),
-                  onSubmitted: (value) => _onSearchChanged(value!),
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.clear, color: Colors.grey),
-                onPressed: _searchQuery.isNotEmpty ? _clearFilters : null,
-              ),
-            ],
-          ),
-        ),
-      ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
-          : _tasks.isEmpty
-              ? Center(child: Text('No tasks available'))
-              : Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Search bar at the top
+                  Row(
                     children: [
+                      Expanded(
+                        child: CustomTextField(
+                          labelText: 'Search tasks by name...',
+                          controller: _searchController,
+                          onSubmitted: (value) => _onSearchChanged(value!),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey),
+                        onPressed: _searchQuery.isNotEmpty 
+                          ? () {
+                              setState(() {
+                                _searchQuery = '';
+                                _searchController.clear();
+                              });
+                              _loadFilteredTasks();
+                            } 
+                          : null,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16.0),
+                  
+                  // Tasks count and filter row - always visible
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _areFiltersActive()
+                          ? RichText(
+                              text: TextSpan(
+                                style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
+                                children: [
+                                  TextSpan(text: '${_tasks.length} filtered '),
+                                  TextSpan(
+                                    text: 'tasks',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Text(
+                              '${_tasks.length} tasks for you Today',
+                              style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
+                            ),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            '${_tasks.length} tasks for you Today',
-                            style: TextStyle(fontSize: 16.0, color: Colors.grey[600]),
-                          ),
+                          // Only show clear filters button if filters are active
+                          if (_areFiltersActive())
+                            TextButton.icon(
+                              icon: Icon(Icons.clear_all, size: 18),
+                              label: Text('Clear'),
+                              onPressed: _clearFilters,
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                minimumSize: Size(0, 36),
+                              ),
+                            ),
                           IconButton(
                             icon: Icon(Icons.filter_list),
                             onPressed: () => _showFilterDialog(context),
                           ),
                         ],
                       ),
-                      SizedBox(height: 16.0),
-                      Text(
-                        'Your Tasks',
-                        style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
-                      ),
-                      SizedBox(height: 16.0),
-                      Expanded(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          physics: AlwaysScrollableScrollPhysics(),
-                          itemCount: _tasks.length,
-                          itemBuilder: (context, index) {
-                            final task = _tasks[index];
-                            return Task(
-                              title: task.title,
-                              description: task.description,
-                              completionDate: task.completionDate,
-                              status: task.status,
-                              assignees: task.assignees,
-                              onStatusChanged: () {
-                                if (task.id != null) {
-                                  _toggleTaskStatus(task.id!);
-                                }
-                              },
-                              onTap: () {
-                                context.go('/task/${task.title}', extra: task.toJson());
-                              },
-                            );
-                          },
-                        ),
-                      ),
                     ],
                   ),
-                ),
+                  SizedBox(height: 16.0),
+                  
+                  // Your Tasks header
+                  Text(
+                    'Your Tasks',
+                    style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 16.0),
+                  
+                  // Task list or empty state
+                  Expanded(
+                    child: _tasks.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 60,
+                                  color: Colors.grey[400],
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'No tasks found',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  _areFiltersActive()
+                                      ? 'Try adjusting your filters'
+                                      : 'Add a new task to get started',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: AlwaysScrollableScrollPhysics(),
+                            itemCount: _tasks.length,
+                            itemBuilder: (context, index) {
+                              final task = _tasks[index];
+                              return Task(
+                                title: task.title,
+                                description: task.description,
+                                completionDate: task.completionDate,
+                                status: task.status,
+                                assignees: task.assignees,
+                                onStatusChanged: () {
+                                  if (task.id != null) {
+                                    _toggleTaskStatus(task.id!);
+                                  }
+                                },
+                                onTap: () {
+                                  context.go('/task/${task.title}', extra: task.toJson());
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           context.go('/create-task');

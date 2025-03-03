@@ -64,7 +64,6 @@ class AuthService {
     } on DioException catch (e) {
       if (e.response!= null) {
         final errorData = e.response!.data;
-                print('Login failed: ${errorData}');
 
         throw Exception('Login failed: ${errorData['message'] ?? 'Server error: ${e.response!.statusMessage}'}');
       } else {

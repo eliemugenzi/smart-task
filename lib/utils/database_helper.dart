@@ -1,4 +1,3 @@
-// utils/database_helper.dart
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -127,61 +126,59 @@ class DatabaseHelper {
   }
 
   Future<List<TaskData>> getFilteredTasks({
-    String? searchQuery, // For fuzzy search on title
-    DateTime? completionDate, // For filtering by completion date
-    Priority? priority, // For filtering by priority
-    List<String>? tags, // For filtering by tags
+    String? searchQuery,
+    DateTime? completionDate,
+    Priority? priority,
+    List<String>? tags,
   }) async {
     final db = await database;
-    String whereClause = '';
-    List<dynamic> whereArgs = [];
 
+    print('Wegfgf: $priority, $completionDate');
+    
+    // Start with getting all tasks
+    final List<Map<String, dynamic>> allTasks = await db.query('tasks');
+    
+    // Convert to TaskData objects
+    List<TaskData> tasks = allTasks.map((map) {
+      return TaskData(
+        id: map['id'] as int?,
+        title: map['title'] as String,
+        completionDate: DateTime.parse(map['completionDate'] as String),
+        status: _parseStatus(map['status'] as String),
+        description: map['description'] as String,
+        assignees: _decodeAssignees(map['assignees'] as String),
+        tags: _decodeTags(map['tags'] as String),
+        priority: _parsePriority(map['priority'] as String),
+      );
+    }).toList();
+    
+    // Apply filters in memory for more accurate matching
     if (searchQuery != null && searchQuery.isNotEmpty) {
-      whereClause += 'title LIKE ?';
-      whereArgs.add('%$searchQuery%'); // Fuzzy search using LIKE
+      tasks = tasks.where((task) => 
+        task.title.toLowerCase().contains(searchQuery.toLowerCase())).toList();
     }
-
+    
     if (completionDate != null) {
-      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
       final startOfDay = DateTime(completionDate.year, completionDate.month, completionDate.day);
       final endOfDay = startOfDay.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
-      whereClause += 'completionDate BETWEEN ? AND ?';
-      whereArgs.add(startOfDay.toIso8601String());
-      whereArgs.add(endOfDay.toIso8601String());
+      tasks = tasks.where((task) => 
+        task.completionDate.isAfter(startOfDay.subtract(Duration(seconds: 1))) && 
+        task.completionDate.isBefore(endOfDay.add(Duration(seconds: 1)))).toList();
     }
-
+    
     if (priority != null) {
-      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
-      whereClause += 'priority = ?';
-      whereArgs.add(priority.name);
+      tasks = tasks.where((task) => task.priority == priority).toList();
     }
-
+    
     if (tags != null && tags.isNotEmpty) {
-      whereClause += whereClause.isNotEmpty ? ' AND ' : '';
-      whereClause += 'tags LIKE ?';
-      whereArgs.add('%${jsonEncode(tags)}%'); // Fuzzy match for tags (JSON array)
+      tasks = tasks.where((task) {
+        // Check if any of the selected tags exist in the task tags
+        final taskTags = task.tags ?? [];
+        return tags.any((tag) => taskTags.contains(tag));
+      }).toList();
     }
-
-    print('Filter query: WHERE $whereClause, Args: $whereArgs'); // Debug log
-    final maps = await db.query(
-      'tasks',
-      where: whereClause.isNotEmpty ? whereClause : null,
-      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
-    );
-
-    return List.generate(maps.length, (i) {
-      final task = TaskData(
-        id: maps[i]['id'] as int?,
-        title: maps[i]['title'] as String,
-        completionDate: DateTime.parse(maps[i]['completionDate'] as String),
-        status: _parseStatus(maps[i]['status'] as String),
-        description: maps[i]['description'] as String,
-        assignees: _decodeAssignees(maps[i]['assignees'] as String),
-        tags: _decodeTags(maps[i]['tags'] as String),
-        priority: _parsePriority(maps[i]['priority'] as String),
-      );
-      return task;
-    });
+    
+    return tasks;
   }
 
   Future<int> deleteTask(int? id) async {
